@@ -460,11 +460,14 @@ def breakeven_buyout(
 
 def evaluate_preset(name: Literal["pessimistic", "central", "optimistic"],
                     hold_years: float = 3.0,
-                    annual_miles: int = 20_000) -> dict:
+                    annual_miles: int = 20_000,
+                    lease: "LeaseComparator | None" = None) -> dict:
     """Build full input objects from a preset and return summary KPIs.
 
     Lets the UI render a side-by-side preset comparison without the user having
-    to click each scenario in turn.
+    to click each scenario in turn. Presets vary ONLY the ownership side — the
+    lease is a known fixed quote so it's held constant across scenarios using
+    the caller's lease object (or LeaseComparator() defaults if not supplied).
     """
     p = preset(name)
     purchase = PurchaseInputs(
@@ -476,7 +479,8 @@ def evaluate_preset(name: Literal["pessimistic", "central", "optimistic"],
     running = RunningCosts(**p["running"])
     tax = TaxParams(**p["tax"])
     exit_val = ExitValue(method="pct_of_buyout", pct_retained=p["exit"]["pct_retained"])
-    lease = LeaseComparator(**p["lease"])
+    if lease is None:
+        lease = LeaseComparator()
 
     own_years = ownership_year_costs(purchase, running, tax, exit_val)
     lease_years = lease_year_costs(lease, running, tax, annual_miles, hold_years)
@@ -512,8 +516,6 @@ def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
                         "battery_reserve_annual": 700},
             "tax": {"per_mile_tax_rate_pence": 4.0, "per_mile_tax_enabled": True},
             "exit": {"pct_retained": 0.38},
-            "lease": {"monthly_cost": 900, "includes_insurance": True,
-                      "insurance_annual": 1_500},
         }
     if name == "optimistic":
         return {
@@ -524,8 +526,6 @@ def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
                         "battery_reserve_annual": 0},
             "tax": {"per_mile_tax_rate_pence": 3.0, "per_mile_tax_enabled": True},
             "exit": {"pct_retained": 0.60},
-            "lease": {"monthly_cost": 1_100, "includes_insurance": True,
-                      "insurance_annual": 750},
         }
     # central
     return {
@@ -536,6 +536,4 @@ def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
                     "battery_reserve_annual": 0},
         "tax": {"per_mile_tax_rate_pence": 3.0, "per_mile_tax_enabled": True},
         "exit": {"pct_retained": suggest_exit_pct(3.0)},
-        "lease": {"monthly_cost": 1_000, "includes_insurance": True,
-                  "insurance_annual": 950},
     }

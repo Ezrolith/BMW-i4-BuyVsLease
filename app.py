@@ -70,7 +70,7 @@ RESEARCH_MD = """
 
 # Bump when default values change in a way that should overwrite existing sessions.
 # Old sessions with a lower version (or none) get a one-time wipe-and-reseed.
-_STATE_VERSION = 3
+_STATE_VERSION = 4
 
 
 def _init_state():
@@ -108,15 +108,18 @@ def _init_state():
         # Stored as a percentage 0-100; the UI shows "55" not "0.55".
         "pct_retained": p["exit"]["pct_retained"] * 100,
         "absolute_value": 14_000.0,
-        "lease_monthly_cost": p["lease"]["monthly_cost"],
+        # Lease defaults are NOT pulled from presets — your lease quote is a
+        # known fixed number, not a scenario variable. Presets only vary
+        # ownership-side assumptions (buyout, residual, insurance, etc.).
+        "lease_monthly_cost": 1_000,
         "lease_mileage_allowance": 20_000,
         "lease_excess_pence": 10.0,
         "lease_includes_service": True,
         "lease_includes_ved": True,
-        "lease_includes_insurance": p["lease"]["includes_insurance"],
+        "lease_includes_insurance": True,
         "lease_includes_eved": True,
         "lease_includes_tyres": True,
-        "lease_insurance_annual": p["lease"]["insurance_annual"],
+        "lease_insurance_annual": 950,
         # Default to salary sacrifice — matches typical "fully inclusive" work
         # leases that bundle insurance, service, VED and tyres. BiK applies
         # automatically using LIST_PRICE_GBP as the P11d value.
@@ -143,12 +146,8 @@ def _apply_preset(name: str):
     st.session_state.per_mile_tax_rate_pence = p["tax"]["per_mile_tax_rate_pence"]
     st.session_state.per_mile_tax_enabled = p["tax"]["per_mile_tax_enabled"]
     st.session_state.pct_retained = p["exit"]["pct_retained"] * 100
-    st.session_state.lease_monthly_cost = p["lease"]["monthly_cost"]
-    st.session_state.lease_includes_insurance = p["lease"]["includes_insurance"]
-    st.session_state.lease_insurance_annual = p["lease"]["insurance_annual"]
-    # Reset lease tax treatment to salary-sacrifice on preset apply so BiK is on
-    st.session_state.lease_type = "salary_sacrifice"
-    st.session_state.p11d_value = LIST_PRICE_GBP
+    # Lease + tax treatment are deliberately NOT overwritten — they reflect the
+    # user's actual quote and circumstances, not a scenario.
 
 
 _init_state()
@@ -516,7 +515,8 @@ st.caption(f"Run the same hold period ({purchase.hold_years:.1f} yrs at "
            f"{purchase.annual_miles:,}/yr) through each preset's assumptions.")
 
 preset_rows = [
-    evaluate_preset(name, hold_years=purchase.hold_years, annual_miles=purchase.annual_miles)
+    evaluate_preset(name, hold_years=purchase.hold_years,
+                    annual_miles=purchase.annual_miles, lease=lease)
     for name in ("pessimistic", "central", "optimistic")
 ]
 preset_df = pd.DataFrame([{
