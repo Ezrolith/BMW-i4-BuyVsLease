@@ -273,11 +273,18 @@ with st.sidebar.expander("Exit value at end of hold", expanded=True):
     st.caption(f"Suggested for {st.session_state.hold_years:.1f} yrs "
                f"({exit_miles_for_label:,.0f} mi at exit): **{suggested_pct:.0f}%** of buy-out")
     if st.session_state.exit_method == "pct_of_buyout":
+        # Apply-suggested must run BEFORE the number_input is instantiated this
+        # rerun — Streamlit forbids writes to a widget-bound key after the
+        # widget exists. Use on_click so the write happens before the next run.
+        def _apply_suggested_pct():
+            st.session_state.pct_retained = (
+                suggest_exit_pct(st.session_state.hold_years) * 100
+            )
+
         st.number_input("% retained at sale", min_value=0.0, key="pct_retained", step=1.0,
                         format="%.0f", help="Enter as a percentage, e.g. 55 = 55% of buy-out")
-        if st.button(f"Apply suggested ({suggested_pct:.0f}%)", key="apply_suggested_pct"):
-            st.session_state.pct_retained = suggested_pct
-            st.rerun()
+        st.button(f"Apply suggested ({suggested_pct:.0f}%)",
+                  key="apply_suggested_pct", on_click=_apply_suggested_pct)
         _typical("pct_retained", 15, 80,
                  "Above 80% implies almost no depreciation; below 15% implies a write-off.")
     else:
