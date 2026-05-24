@@ -68,13 +68,25 @@ RESEARCH_MD = """
 # Session state init
 # ---------------------------------------------------------------------------
 
+# Bump when default values change in a way that should overwrite existing sessions.
+# Old sessions with a lower version (or none) get a one-time wipe-and-reseed.
+_STATE_VERSION = 3
+
+
 def _init_state():
     """Seed st.session_state with the 'central' preset, filling in any missing keys.
 
     Uses setdefault so existing session values (e.g. user tweaks) are preserved
-    across code updates that add new keys. Without this, an old session that
-    predates a new field will AttributeError when the constructor reads it.
+    across code updates that add new keys — *unless* the state version has been
+    bumped, in which case we wipe and reseed from current defaults.
     """
+    if st.session_state.get("_state_version") != _STATE_VERSION:
+        # Clear everything except internal Streamlit-managed keys
+        for k in list(st.session_state.keys()):
+            if not k.startswith("_"):
+                del st.session_state[k]
+        st.session_state["_state_version"] = _STATE_VERSION
+
     p = preset("central")
     defaults = {
         "buyout_price": p["purchase"]["buyout_price"],
@@ -109,7 +121,7 @@ def _init_state():
         # leases that bundle insurance, service, VED and tyres. BiK applies
         # automatically using LIST_PRICE_GBP as the P11d value.
         "lease_type": "salary_sacrifice",
-        "tax_band": "higher",
+        "tax_band": "basic",
         "p11d_value": LIST_PRICE_GBP,
         "initialised": True,
     }

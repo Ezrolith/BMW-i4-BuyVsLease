@@ -124,7 +124,7 @@ class LeaseComparator(BaseModel):
         marginal-relief is applied as a saving, BiK tax is added back
       - company_car: employer pays the lease; employee only sees BiK
     """
-    monthly_cost: float = Field(700, ge=0)
+    monthly_cost: float = Field(1_000, ge=0)
     mileage_allowance: int = Field(20_000, ge=0)
     excess_pence_per_mile: float = Field(10.0, ge=0)
     includes_service: bool = True
@@ -138,8 +138,8 @@ class LeaseComparator(BaseModel):
     includes_tyres: bool = True
 
     # Tax treatment
-    lease_type: LeaseType = "personal"
-    tax_band: TaxBand = "higher"
+    lease_type: LeaseType = "salary_sacrifice"
+    tax_band: TaxBand = "basic"
     # P11d value of the lease car (defaults to current i4 list — typically the
     # replacement car's P11d, which the user may override).
     p11d_value: float = Field(66_124, ge=0)
@@ -512,7 +512,7 @@ def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
                         "battery_reserve_annual": 700},
             "tax": {"per_mile_tax_rate_pence": 4.0, "per_mile_tax_enabled": True},
             "exit": {"pct_retained": 0.38},
-            "lease": {"monthly_cost": 650, "includes_insurance": True,
+            "lease": {"monthly_cost": 900, "includes_insurance": True,
                       "insurance_annual": 1_500},
         }
     if name == "optimistic":
@@ -524,7 +524,7 @@ def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
                         "battery_reserve_annual": 0},
             "tax": {"per_mile_tax_rate_pence": 3.0, "per_mile_tax_enabled": True},
             "exit": {"pct_retained": 0.60},
-            "lease": {"monthly_cost": 780, "includes_insurance": True,
+            "lease": {"monthly_cost": 1_100, "includes_insurance": True,
                       "insurance_annual": 750},
         }
     # central
@@ -536,6 +536,6 @@ def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
                     "battery_reserve_annual": 0},
         "tax": {"per_mile_tax_rate_pence": 3.0, "per_mile_tax_enabled": True},
         "exit": {"pct_retained": suggest_exit_pct(3.0)},
-        "lease": {"monthly_cost": 700, "includes_insurance": True,
+        "lease": {"monthly_cost": 1_000, "includes_insurance": True,
                   "insurance_annual": 950},
     }
