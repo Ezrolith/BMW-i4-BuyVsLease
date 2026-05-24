@@ -125,14 +125,13 @@ def test_scenario_central_3yr():
 
 
 def test_scenario_lease_comparator_central():
-    """£700/mo lease, fully inclusive (service+VED+insurance+eVED+tyres bundled)."""
+    """Fully inclusive personal lease — monthly equals the headline lease cost."""
     lease = LeaseComparator(monthly_cost=700, mileage_allowance=20_000,
                             includes_service=True, includes_ved=True,
                             includes_insurance=True, includes_eved=True,
-                            includes_tyres=True)
+                            includes_tyres=True, lease_type="personal")
     years = lease_year_costs(lease, RunningCosts(), TaxParams(),
                              annual_miles=20_000, hold_years=3.0)
-    # Everything bundled → monthly equals the headline lease cost
     monthly = monthly_cost(years, 3.0)
     assert monthly == pytest.approx(700)
 
