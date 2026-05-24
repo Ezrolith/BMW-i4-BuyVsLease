@@ -37,7 +37,7 @@ class PurchaseInputs(BaseModel):
     buyout_price: float = Field(26_000, ge=0)
     hold_years: float = Field(3.0, gt=0)
     annual_miles: int = Field(20_000, ge=0)
-    cost_of_capital_pct: float = Field(5.0, ge=0)
+    cost_of_capital_pct: float = Field(7.0, ge=0)
 
 
 class RunningCosts(BaseModel):
@@ -505,7 +505,7 @@ def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
     """
     if name == "pessimistic":
         return {
-            "purchase": {"buyout_price": 30_000, "cost_of_capital_pct": 6.5},
+            "purchase": {"buyout_price": 30_000, "cost_of_capital_pct": 8.5},
             "running": {"insurance_annual": 1_500, "service_annual": 400,
                         "tyre_interval_miles": 28_000, "tyre_set_cost": 1_150,
                         "other_maintenance_annual": 500,
@@ -517,7 +517,7 @@ def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
         }
     if name == "optimistic":
         return {
-            "purchase": {"buyout_price": 18_000, "cost_of_capital_pct": 3.5},
+            "purchase": {"buyout_price": 18_000, "cost_of_capital_pct": 5.0},
             "running": {"insurance_annual": 750, "service_annual": 230,
                         "tyre_interval_miles": 40_000, "tyre_set_cost": 800,
                         "other_maintenance_annual": 200,
@@ -529,7 +529,7 @@ def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
         }
     # central
     return {
-        "purchase": {"buyout_price": 22_000, "cost_of_capital_pct": 5.0},
+        "purchase": {"buyout_price": 22_000, "cost_of_capital_pct": 7.0},
         "running": {"insurance_annual": 950, "service_annual": 300,
                     "tyre_interval_miles": 35_000, "tyre_set_cost": 950,
                     "other_maintenance_annual": 300,
