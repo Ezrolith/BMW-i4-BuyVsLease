@@ -45,9 +45,11 @@ class RunningCosts(BaseModel):
 
     Default values come from May 2026 research — see app for sources.
     """
-    # National BMW i4 average £1,430 (finder.com Feb 2026) + small M-postcode bump.
-    # Forum "+50% YoY renewal" anecdotes live in the pessimistic preset, not here.
-    insurance_annual: float = Field(1_500, ge=0)
+    # Age-40 finder.com Feb 2026 figure: £756/yr for the cheapest i4 variant
+    # (insurance group 34). The eDrive40 M Sport sits around group 35-38, so
+    # add ~£100, plus ~10% Manchester postcode loading → £950 central.
+    # Forum "+50% YoY renewal" anecdotes live in the pessimistic preset.
+    insurance_annual: float = Field(950, ge=0)
     service_annual: float = Field(300, ge=0)
     tyre_interval_miles: int = Field(35_000, gt=0)
     tyre_set_cost: float = Field(950, ge=0)
@@ -130,7 +132,7 @@ class LeaseComparator(BaseModel):
     # Defaults to True per user preference — toggle off if your specific PCH
     # quote doesn't bundle insurance.
     includes_insurance: bool = True
-    insurance_annual: float = Field(1_500, ge=0)
+    insurance_annual: float = Field(950, ge=0)
     includes_eved: bool = True
     # Some inclusive work / salary-sacrifice leases bundle tyres. Defaults True.
     includes_tyres: bool = True
@@ -504,36 +506,36 @@ def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
     if name == "pessimistic":
         return {
             "purchase": {"buyout_price": 30_000, "cost_of_capital_pct": 6.5},
-            "running": {"insurance_annual": 2_200, "service_annual": 400,
+            "running": {"insurance_annual": 1_500, "service_annual": 400,
                         "tyre_interval_miles": 28_000, "tyre_set_cost": 1_150,
                         "other_maintenance_annual": 500,
                         "battery_reserve_annual": 700},
             "tax": {"per_mile_tax_rate_pence": 4.0, "per_mile_tax_enabled": True},
             "exit": {"pct_retained": 0.38},
             "lease": {"monthly_cost": 650, "includes_insurance": True,
-                      "insurance_annual": 2_200},
+                      "insurance_annual": 1_500},
         }
     if name == "optimistic":
         return {
             "purchase": {"buyout_price": 18_000, "cost_of_capital_pct": 3.5},
-            "running": {"insurance_annual": 1_200, "service_annual": 230,
+            "running": {"insurance_annual": 750, "service_annual": 230,
                         "tyre_interval_miles": 40_000, "tyre_set_cost": 800,
                         "other_maintenance_annual": 200,
                         "battery_reserve_annual": 0},
             "tax": {"per_mile_tax_rate_pence": 3.0, "per_mile_tax_enabled": True},
             "exit": {"pct_retained": 0.60},
             "lease": {"monthly_cost": 780, "includes_insurance": True,
-                      "insurance_annual": 1_200},
+                      "insurance_annual": 750},
         }
     # central
     return {
         "purchase": {"buyout_price": 22_000, "cost_of_capital_pct": 5.0},
-        "running": {"insurance_annual": 1_500, "service_annual": 300,
+        "running": {"insurance_annual": 950, "service_annual": 300,
                     "tyre_interval_miles": 35_000, "tyre_set_cost": 950,
                     "other_maintenance_annual": 300,
                     "battery_reserve_annual": 0},
         "tax": {"per_mile_tax_rate_pence": 3.0, "per_mile_tax_enabled": True},
         "exit": {"pct_retained": suggest_exit_pct(3.0)},
         "lease": {"monthly_cost": 700, "includes_insurance": True,
-                  "insurance_annual": 1_500},
+                  "insurance_annual": 950},
     }

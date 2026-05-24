@@ -51,8 +51,8 @@ RESEARCH_MD = """
 | Per-mile EV tax | **3p/mile from Apr 2028, confirmed** | [RAC Autumn Budget 2025](https://www.rac.co.uk/drive/news/motoring-news/autumn-budget-2025/) |
 | Buy-out central | £22,000 (2023 i4 eDrive40 M Sport @ 65k miles ~£22,490 retail May 2026) | [Autotrader](https://www.autotrader.co.uk/cars/used/bmw/i4) |
 | Buy-out range | £18k optimistic (wholesale) to £30k pessimistic (leasing co holds original residual) | Autotrader trade calc |
-| Insurance central | £1,500/yr (national £1,430 + small Manchester loading) | [Finder UK Feb 2026](https://www.finder.com/uk/car-insurance/bmw/bmw-i4-insurance-group) |
-| Insurance pessimistic | £2,200/yr (renewal-shock anecdote) | [i4talk forum thread](https://www.i4talk.com/threads/uk-insurance-huge-uplift.10768/) |
+| Insurance central | £950/yr (age 40 + group 35-38 + Manchester loading) | [Finder UK Feb 2026, age 40: £756 for group 34](https://www.finder.com/uk/car-insurance/bmw/bmw-i4-insurance-group) |
+| Insurance pessimistic | £1,500/yr (renewal-shock anecdote) | [i4talk forum thread](https://www.i4talk.com/threads/uk-insurance-huge-uplift.10768/) |
 | Annual service | £300 (£250 indie / £350 dealer) | [bumper.co](https://www.bumper.co/blog/bmw-i4-repair-costs) |
 | Tyre set (4 corners fitted) | £950 (premium EV-rated 19") | [pirelli.com](https://www.pirelli.com/tyres/en-ww/car/catalogue/car-brand/bmw/i4) |
 | HV battery warranty | 8yr or 100k miles, ~70% capacity guarantee | [Recharged reliability](https://recharged.com/articles/bmw-i4-reliability-2026) |
@@ -204,10 +204,11 @@ with st.sidebar.expander("Buy-out & holding", expanded=True):
 
 with st.sidebar.expander("Running costs", expanded=True):
     st.number_input("Insurance £/yr", min_value=0.0, key="insurance_annual", step=50.0)
-    _typical("insurance_annual", 800, 2_500,
-             "National BMW i4 average £1,430 (finder.com Feb 2026). "
-             "Get a real quote — premiums vary wildly by individual. Pessimistic preset "
-             "uses £2,200 to reflect forum reports of +50% renewal hikes.")
+    _typical("insurance_annual", 600, 1_800,
+             "Age-40 finder.com Feb 2026: £756/yr for cheapest i4 (group 34). "
+             "eDrive40 M Sport is group 35-38 → ~£900, +Manchester loading → £950 central. "
+             "Pessimistic preset uses £1,500 for renewal-shock scenarios. "
+             "Get a real quote — premiums vary wildly.")
 
     st.number_input("Service £/yr", min_value=0.0, key="service_annual", step=10.0)
     _typical("service_annual", 180, 450, "Dealer £288-£352, indie ~£250.")
