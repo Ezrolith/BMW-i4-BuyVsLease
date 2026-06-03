@@ -5,6 +5,7 @@ Run with:  streamlit run app.py
 from __future__ import annotations
 
 import json
+import math
 from datetime import date
 
 import pandas as pd
@@ -12,8 +13,10 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from models import (
+    CURRENT_MILEAGE,
     EV_BIK_SCHEDULE,
     ExitValue,
+    FIRST_REG_DATE,
     LeaseComparator,
     LEASE_END_DATE,
     LIST_PRICE_GBP,
@@ -153,25 +156,37 @@ def _apply_preset(name: str):
 _init_state()
 
 # Migration: pct_retained used to be a fraction (0-1); now stored as a percent (0-100).
-# A stale session value < 1.5 is treated as the old format and rescaled once.
-if st.session_state.get("pct_retained", 50) < 1.5:
-    st.session_state.pct_retained = st.session_state.pct_retained * 100
+# A stale session value < 1.5 is treated as the old format and rescaled — but only
+# once per session, gated by a flag, so a user legitimately entering a tiny percent
+# (e.g. 1 = 1%) on a later rerun isn't silently rewritten to 100.
+if not st.session_state.get("_pct_migrated"):
+    if st.session_state.get("pct_retained", 50) < 1.5:
+        st.session_state.pct_retained = st.session_state.pct_retained * 100
+    st.session_state["_pct_migrated"] = True
 
 
 # ---------------------------------------------------------------------------
 # Soft-validation helper
 # ---------------------------------------------------------------------------
 
-def _typical(key: str, low: float, high: float, advice: str = "") -> None:
+def _typical(key: str, low: float, high: float, advice: str = "",
+             unit: str = "£") -> None:
     """Show a small warning under an input if the value is outside the typical range.
 
     Doesn't block the input — purely advisory. `advice` is appended after the range.
+    `unit` controls how the range reads: "£" prefixes pounds (the default); any other
+    value (e.g. "%", "p", " mi", " yrs") is suffixed instead, so non-money inputs
+    don't show a misleading pound sign.
     """
     v = st.session_state.get(key)
     if v is None:
         return
     if v < low or v > high:
-        msg = f"Outside typical range £{low:,.0f}–£{high:,.0f}."
+        if unit == "£":
+            rng = f"£{low:,.0f}–£{high:,.0f}"
+        else:
+            rng = f"{low:,g}–{high:,g}{unit}"
+        msg = f"Outside typical range {rng}."
         if advice:
             msg += " " + advice
         st.caption(f":warning: {msg}")
@@ -202,16 +217,19 @@ with st.sidebar.expander("Buy-out & holding", expanded=True):
 
     st.number_input("Hold period (years)", min_value=0.5, key="hold_years", step=0.5)
     _typical("hold_years", 1.5, 6.0,
-             "Beyond 6 years the car would be 9+ yrs old at sale — extrapolation gets shaky.")
+             "Beyond 6 years the car would be 9+ yrs old at sale — extrapolation gets shaky.",
+             unit=" yrs")
 
     st.number_input("Annual mileage", min_value=0, key="annual_miles", step=1_000)
     _typical("annual_miles", 8_000, 30_000,
-             "Far outside this range, tyre/service assumptions probably need a second look.")
+             "Far outside this range, tyre/service assumptions probably need a second look.",
+             unit=" mi")
 
     st.number_input("Cost of capital %", min_value=0.0, key="cost_of_capital_pct", step=0.25,
                     help="Opportunity cost on £ tied up in the car (declining balance)")
     _typical("cost_of_capital_pct", 0.0, 10.0,
-             "Most people use 3-7% (cash savings rate / mortgage offset / investment return).")
+             "Most people use 3-7% (cash savings rate / mortgage offset / investment return).",
+             unit="%")
 
 with st.sidebar.expander("Running costs", expanded=True):
     st.number_input("Insurance £/yr", min_value=0.0, key="insurance_annual", step=50.0)
@@ -226,7 +244,8 @@ with st.sidebar.expander("Running costs", expanded=True):
 
     st.number_input("Tyre interval (miles)", min_value=1_000, key="tyre_interval_miles", step=1_000)
     _typical("tyre_interval_miles", 20_000, 50_000,
-             "i4 owners typically report 30-40k miles per set.")
+             "i4 owners typically report 30-40k miles per set.",
+             unit=" mi")
 
     st.number_input("Tyre set £ (4 corners fitted)", min_value=0.0, key="tyre_set_cost", step=50.0)
     _typical("tyre_set_cost", 600, 1_400,
@@ -236,9 +255,9 @@ with st.sidebar.expander("Running costs", expanded=True):
                     help="Wipers, MOT (yrs 3+), brake fluid, 12V battery, misc")
     _typical("other_maintenance_annual", 100, 700)
 
-    # Battery-warranty risk: 8yr/100k from first reg. Exit miles = 41,500 + hold × annual
-    exit_miles = 41_500 + st.session_state.hold_years * st.session_state.annual_miles
-    car_age_at_exit = (LEASE_END_DATE.year - 2024) + st.session_state.hold_years
+    # Battery-warranty risk: 8yr/100k from first reg. Exit miles = current odo + hold × annual
+    exit_miles = CURRENT_MILEAGE + st.session_state.hold_years * st.session_state.annual_miles
+    car_age_at_exit = (LEASE_END_DATE.year - FIRST_REG_DATE.year) + st.session_state.hold_years
     past_warranty = exit_miles > 100_000 or car_age_at_exit > 8
     st.number_input("HV battery reserve £/yr", min_value=0.0,
                     key="battery_reserve_annual", step=100.0,
@@ -261,7 +280,8 @@ with st.sidebar.expander("Tax", expanded=True):
     st.checkbox("Per-mile EV tax (Apr 2028)", key="per_mile_tax_enabled")
     st.number_input("Per-mile rate (pence)", min_value=0.0, key="per_mile_tax_rate_pence", step=0.25)
     _typical("per_mile_tax_rate_pence", 0.0, 8.0,
-             "Confirmed 3p/mile for BEVs from Apr 2028.")
+             "Confirmed 3p/mile for BEVs from Apr 2028.",
+             unit="p")
     st.date_input("Per-mile tax start date", key="per_mile_tax_start")
 
 with st.sidebar.expander("Exit value at end of hold", expanded=True):
@@ -285,7 +305,8 @@ with st.sidebar.expander("Exit value at end of hold", expanded=True):
         st.button(f"Apply suggested ({suggested_pct:.0f}%)",
                   key="apply_suggested_pct", on_click=_apply_suggested_pct)
         _typical("pct_retained", 15, 80,
-                 "Above 80% implies almost no depreciation; below 15% implies a write-off.")
+                 "Above 80% implies almost no depreciation; below 15% implies a write-off.",
+                 unit="%")
     else:
         st.number_input("Sale price £", min_value=0.0, key="absolute_value", step=500.0)
         _typical("absolute_value", 5_000, 30_000)
@@ -295,11 +316,12 @@ with st.sidebar.expander("Lease comparator", expanded=True):
     _typical("lease_monthly_cost", 400, 1_200, "Mainstream EV personal-lease band in 2026.")
 
     st.number_input("Mileage allowance/yr", min_value=0, key="lease_mileage_allowance", step=1_000)
-    _typical("lease_mileage_allowance", 5_000, 30_000)
+    _typical("lease_mileage_allowance", 5_000, 30_000, unit=" mi")
 
     st.number_input("Excess mileage pence/mile", min_value=0.0, key="lease_excess_pence", step=0.5)
     _typical("lease_excess_pence", 5.0, 30.0,
-             "Most contracts charge 8-15p/mile over allowance.")
+             "Most contracts charge 8-15p/mile over allowance.",
+             unit="p")
 
     st.checkbox("Includes service?", key="lease_includes_service")
     st.checkbox("Includes VED?", key="lease_includes_ved")
@@ -405,6 +427,8 @@ own_mo = monthly_cost(own_years, purchase.hold_years)
 lease_mo = monthly_cost(lease_years, purchase.hold_years)
 delta_mo = own_mo - lease_mo
 breakeven = breakeven_buyout(purchase, running, tax, exit_val, lease)
+breakeven_known = not math.isnan(breakeven)
+breakeven_txt = f"£{breakeven:,.0f}" if breakeven_known else "—"
 
 
 # ---------------------------------------------------------------------------
@@ -412,7 +436,7 @@ breakeven = breakeven_buyout(purchase, running, tax, exit_val, lease)
 # ---------------------------------------------------------------------------
 
 st.title("BMW i4 eDrive40 M Sport — Buy out vs fresh lease")
-st.caption(f"List price £{LIST_PRICE_GBP:,.0f} · First reg {LEASE_END_DATE.year - 3} · "
+st.caption(f"List price £{LIST_PRICE_GBP:,.0f} · First reg {FIRST_REG_DATE.year} · "
            f"Lease ends {LEASE_END_DATE.isoformat()} · Hold {purchase.hold_years:.1f} yrs at "
            f"{purchase.annual_miles:,}/yr")
 
@@ -420,7 +444,7 @@ with st.expander("Research summary & sources", expanded=False):
     st.markdown(RESEARCH_MD)
 
 lease_label = {"personal": "Lease £/month", "salary_sacrifice": "Lease £/mo (net)",
-               "company_car": "Lease £/mo (BiK only)"}[lease.lease_type]
+               "company_car": "Lease £/mo (out-of-pocket)"}[lease.lease_type]
 # Gross-vs-net breakdown text for sal-sac/company-car
 breakdown_help = f"Total over hold: £{lease_total:,.0f}"
 if lease.lease_type == "salary_sacrifice":
@@ -440,8 +464,10 @@ k1.metric("Ownership £/month", f"£{own_mo:,.0f}", help=f"Total over hold: £{o
 k2.metric(lease_label, f"£{lease_mo:,.0f}", help=breakdown_help)
 k3.metric("Delta (own − lease)", f"£{delta_mo:+,.0f}/mo",
           delta=f"{delta_mo:+,.0f}", delta_color="inverse")
-k4.metric("Breakeven buy-out", f"£{breakeven:,.0f}",
-          help="Price at which ownership monthly cost = lease monthly cost")
+k4.metric("Breakeven buy-out", breakeven_txt,
+          help="Price at which ownership monthly cost = lease monthly cost"
+               + ("" if breakeven_known
+                  else f" — no crossing within £1k–£{LIST_PRICE_GBP:,.0f}"))
 
 # Lease-side line-item breakdown so the user can see what £X/mo is made of
 def _per_mo(getter) -> float:
@@ -494,17 +520,21 @@ elif lease.lease_type == "company_car":
 
 if delta_mo < 0:
     saving_total = -delta_mo * purchase.hold_years * 12
+    tail = (f"Any buy-out price below **£{breakeven:,.0f}** beats this lease."
+            if breakeven_known else
+            "Ownership beats this lease across the whole modelled buy-out range.")
     st.markdown(
         f"### Verdict: **Buy out** ✓ — saves **£{-delta_mo:,.0f}/mo** "
-        f"(£{saving_total:,.0f} over {purchase.hold_years:.1f} yrs). "
-        f"Any buy-out price below **£{breakeven:,.0f}** beats this lease."
+        f"(£{saving_total:,.0f} over {purchase.hold_years:.1f} yrs). " + tail
     )
 elif delta_mo > 0:
     loss_total = delta_mo * purchase.hold_years * 12
+    tail = (f"Buy-out would need to drop below **£{breakeven:,.0f}** to beat the lease."
+            if breakeven_known else
+            "No buy-out price in the modelled range beats this lease.")
     st.markdown(
         f"### Verdict: **Take the lease** ✓ — owning costs **£{delta_mo:,.0f}/mo more** "
-        f"(£{loss_total:,.0f} over {purchase.hold_years:.1f} yrs). "
-        f"Buy-out would need to drop below **£{breakeven:,.0f}** to beat the lease."
+        f"(£{loss_total:,.0f} over {purchase.hold_years:.1f} yrs). " + tail
     )
 else:
     st.markdown("### Verdict: **Tie** — both options cost the same per month.")
@@ -738,8 +768,11 @@ with c2:
                 if k in EXPORT_KEYS:
                     st.session_state[k] = v
             # Backwards-compat: older saves stored pct_retained as a fraction (0-1).
-            if st.session_state.get("pct_retained", 50) < 1.5:
-                st.session_state.pct_retained = st.session_state.pct_retained * 100
+            # Only rescale a genuine fraction (0 < v <= 1); a small percent like 1 (=1%)
+            # is left untouched.
+            pr = st.session_state.get("pct_retained", 50)
+            if 0 < pr <= 1:
+                st.session_state.pct_retained = pr * 100
             st.success("Scenario loaded — rerun pending.")
             st.rerun()
         except Exception as e:

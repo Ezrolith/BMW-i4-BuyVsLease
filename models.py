@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, computed_field
 LIST_PRICE_GBP: float = 66_124.0
 FIRST_REG_DATE: date = date(2024, 4, 1)
 LEASE_END_DATE: date = date(2027, 4, 1)
+CURRENT_MILEAGE: int = 41_500  # odometer reading at May 2026 (see README)
 
 
 # ---------------------------------------------------------------------------
@@ -429,7 +430,9 @@ def breakeven_buyout(
     """Buy-out price at which ownership monthly cost equals lease monthly cost.
 
     Bisection — robust against non-linearity from the ECS / per-mile tax
-    thresholds. Returns the price in £.
+    thresholds. Returns the price in £, or NaN if no breakeven exists within
+    the £1k–list-price bracket (i.e. ownership is dearer — or cheaper — than the
+    lease at every price in range).
     """
     lease_years = lease_year_costs(
         lease=lease, running=running, tax=tax,
@@ -444,7 +447,14 @@ def breakeven_buyout(
             purchase.hold_years,
         )
 
-    lo, hi = 1_000.0, 60_000.0
+    # Bisection only converges if the breakeven price actually lies in the
+    # bracket. Check for a sign change first: if ownership is dearer than the
+    # lease at every price in range (or cheaper at every price) there is no
+    # crossing, so return NaN and let the caller say so rather than report a
+    # clamped bracket bound as though it were a real breakeven.
+    lo, hi = 1_000.0, LIST_PRICE_GBP
+    if (own_monthly(lo) - target > 0) == (own_monthly(hi) - target > 0):
+        return float("nan")
     for _ in range(60):
         mid = (lo + hi) / 2
         if own_monthly(mid) < target:

@@ -122,6 +122,10 @@ def test_scenario_central_3yr():
     # Sanity bounds for a £26k buy-out + 3 years of running costs + 60k tyre wear
     assert 22_000 < grand < 32_000
     assert 600 < per_month < 900
+    # Pin the deterministic, decision-independent components so a whole category
+    # silently dropping out (e.g. opportunity cost) is caught despite the wide bands.
+    assert sum(y.depreciation for y in years) == pytest.approx(13_000)
+    assert sum(y.opportunity_cost for y in years) == pytest.approx(2_925, rel=1e-3)
 
 
 def test_scenario_lease_comparator_central():
@@ -295,3 +299,84 @@ def test_partial_trailing_year_pro_rates_costs():
     assert years[-1].fraction == pytest.approx(0.5)
     # Insurance in the partial year should be half the annual
     assert years[-1].insurance == pytest.approx(years[0].insurance * 0.5)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage — branches and edges the suite above left untested
+# ---------------------------------------------------------------------------
+
+def test_ecs_partial_overlap_straddling_window_start():
+    """A billing year straddling ECS start (Apr 2025) is ~half active (183/365)."""
+    tax = TaxParams()
+    share = ecs_years_active(tax, date(2024, 10, 1), date(2025, 10, 1))
+    assert share == pytest.approx(0.5, abs=0.01)
+
+
+def test_ecs_partial_overlap_straddling_window_end():
+    """A billing year straddling ECS end (Apr 2030) is ~half active (182/365)."""
+    tax = TaxParams()
+    share = ecs_years_active(tax, date(2029, 10, 1), date(2030, 10, 1))
+    assert share == pytest.approx(0.5, abs=0.01)
+
+
+def test_depreciation_absolute_method():
+    """The 'absolute' exit method depreciates the buy-out down to the absolute sale price."""
+    purchase = PurchaseInputs(buyout_price=26_000, hold_years=3.0)
+    exit_val = ExitValue(method="absolute", absolute_value=10_000)
+    years = ownership_year_costs(purchase, RunningCosts(), TaxParams(), exit_val)
+    assert sum(y.depreciation for y in years) == pytest.approx(16_000)
+
+
+def test_partial_trailing_year_depreciation_pro_rates():
+    """Partial-year depreciation uses fraction/hold_years, and the total stays exact."""
+    purchase = PurchaseInputs(buyout_price=26_000, hold_years=2.5)
+    exit_val = ExitValue(method="pct_of_buyout", pct_retained=0.5)
+    years = ownership_year_costs(purchase, RunningCosts(), TaxParams(), exit_val)
+    assert sum(y.depreciation for y in years) == pytest.approx(13_000)
+    assert years[-1].depreciation == pytest.approx(2_600)  # 13000 * (0.5/2.5)
+
+
+def test_suggest_exit_pct_out_of_range_fallback():
+    """Holds that snap to a key outside the anchor table fall back to 0.50."""
+    assert suggest_exit_pct(1.0) == pytest.approx(0.50)
+    assert suggest_exit_pct(6.0) == pytest.approx(0.50)
+
+
+def test_evaluate_preset_scenarios_ordered():
+    """Pessimistic costs more to own than central, which costs more than optimistic.
+
+    Exercises the pessimistic/optimistic branches of preset() (otherwise only
+    'central' is ever built) and pins the cheaper→pricier ownership ordering.
+    """
+    from models import evaluate_preset
+    pess = evaluate_preset("pessimistic", hold_years=3.0, annual_miles=20_000)
+    cen = evaluate_preset("central", hold_years=3.0, annual_miles=20_000)
+    opt = evaluate_preset("optimistic", hold_years=3.0, annual_miles=20_000)
+    assert pess["own_monthly"] > cen["own_monthly"] > opt["own_monthly"]
+
+
+def test_company_car_driver_borne_lines_still_apply():
+    """For a company car, unbundled insurance/tyres/per-mile still fall on the driver."""
+    lease = LeaseComparator(monthly_cost=1_000, lease_type="company_car",
+                            tax_band="higher", p11d_value=66_124,
+                            includes_eved=False, includes_tyres=False,
+                            includes_insurance=False)
+    years = lease_year_costs(lease, RunningCosts(), TaxParams(), 20_000, 3.0)
+    assert all(y.lease_payments == 0 for y in years)
+    assert all(y.bik_tax > 0 for y in years)
+    assert all(y.insurance > 0 for y in years)
+    assert all(y.tyres > 0 for y in years)
+    assert sum(y.per_mile_tax for y in years) > 0  # year 1 is 0 (tax starts Apr 2028)
+
+
+def test_breakeven_returns_nan_when_no_crossing():
+    """No breakeven when ownership is dearer (or cheaper) than the lease at every price."""
+    import math
+    purchase = PurchaseInputs()
+    running = RunningCosts()
+    tax = TaxParams()
+    exit_val = ExitValue(method="pct_of_buyout", pct_retained=0.5)
+    cheap = LeaseComparator(monthly_cost=50, lease_type="personal")
+    assert math.isnan(breakeven_buyout(purchase, running, tax, exit_val, cheap))
+    dear = LeaseComparator(monthly_cost=5_000, lease_type="personal")
+    assert math.isnan(breakeven_buyout(purchase, running, tax, exit_val, dear))
