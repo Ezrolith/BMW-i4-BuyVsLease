@@ -13,6 +13,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from models import (
+    CURRENT_LEASE_MONTHLY,
     CURRENT_MILEAGE,
     EV_BIK_SCHEDULE,
     ExitValue,
@@ -539,10 +540,24 @@ elif delta_mo > 0:
 else:
     st.markdown("### Verdict: **Tie** — both options cost the same per month.")
 
-# Side-by-side scenario range
+# Reference: what you pay today, so both options are anchored against the status quo.
+cheapest = min(own_mo, lease_mo)
+vs_today = CURRENT_LEASE_MONTHLY - cheapest
+st.caption(
+    f"For reference, you pay **£{CURRENT_LEASE_MONTHLY:,.0f}/mo** on the current lease today. "
+    f"Cheapest modelled option (£{cheapest:,.0f}/mo) is "
+    f"**£{vs_today:,.0f}/mo {'less' if vs_today >= 0 else 'more'}** than today — "
+    f"£{abs(vs_today) * purchase.hold_years * 12:,.0f} over {purchase.hold_years:.1f} yrs. "
+    f"(Today's car is fully inclusive; check the lease toggles match for a fair compare.)"
+)
+
+# Side-by-side scenario range. Only the OWNERSHIP side varies across presets —
+# the lease is your fixed quote — so we show the lease once in the caption and
+# keep the table focused on what actually changes.
 st.subheader("Scenario range")
-st.caption(f"Run the same hold period ({purchase.hold_years:.1f} yrs at "
-           f"{purchase.annual_miles:,}/yr) through each preset's assumptions.")
+st.caption(f"Same hold period ({purchase.hold_years:.1f} yrs at "
+           f"{purchase.annual_miles:,}/yr) and the same lease "
+           f"(**£{lease_mo:,.0f}/mo**) through each preset's *ownership* assumptions.")
 
 preset_rows = [
     evaluate_preset(name, hold_years=purchase.hold_years,
@@ -553,9 +568,9 @@ preset_df = pd.DataFrame([{
     "Scenario": r["scenario"].title(),
     "Buy-out £": f"£{r['buyout']:,.0f}",
     "Own £/mo": f"£{r['own_monthly']:,.0f}",
-    "Lease £/mo": f"£{r['lease_monthly']:,.0f}",
     "Delta £/mo": f"£{r['delta_monthly']:+,.0f}",
-    "Breakeven £": f"£{r['breakeven']:,.0f}",
+    "Breakeven £": (f"£{r['breakeven']:,.0f}"
+                    if not math.isnan(r["breakeven"]) else "—"),
     "Winner": "Own" if r["delta_monthly"] < 0 else "Lease",
 } for r in preset_rows])
 st.dataframe(preset_df, use_container_width=True, hide_index=True)

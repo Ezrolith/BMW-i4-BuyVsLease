@@ -22,6 +22,7 @@ LIST_PRICE_GBP: float = 66_124.0
 FIRST_REG_DATE: date = date(2024, 4, 1)
 LEASE_END_DATE: date = date(2027, 4, 1)
 CURRENT_MILEAGE: int = 41_500  # odometer reading at May 2026 (see README)
+CURRENT_LEASE_MONTHLY: float = 1_100.0  # gross £/mo on the existing i4 lease today
 
 
 # ---------------------------------------------------------------------------
