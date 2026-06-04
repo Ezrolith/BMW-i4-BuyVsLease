@@ -380,3 +380,58 @@ def test_breakeven_returns_nan_when_no_crossing():
     assert math.isnan(breakeven_buyout(purchase, running, tax, exit_val, cheap))
     dear = LeaseComparator(monthly_cost=5_000, lease_type="personal")
     assert math.isnan(breakeven_buyout(purchase, running, tax, exit_val, dear))
+
+
+def test_add_years_leap_years():
+    """Verify add_years handles leap years and normal years correctly."""
+    from models import add_years
+    # 2024-02-29 is a leap year. Adding 1 year should result in 2025-02-28.
+    assert add_years(date(2024, 2, 29), 1) == date(2025, 2, 28)
+    # Adding 4 years should result in 2028-02-29 (another leap year).
+    assert add_years(date(2024, 2, 29), 4) == date(2028, 2, 29)
+    # Normal date adding years.
+    assert add_years(date(2023, 5, 15), 2) == date(2025, 5, 15)
+
+
+def test_bik_tax_year_boundary():
+    """Verify BiK tax year boundary uses precise April 6 start."""
+    from models import LeaseComparator, lease_year_costs, RunningCosts, TaxParams
+    lease = LeaseComparator(
+        monthly_cost=1000, lease_type="salary_sacrifice", tax_band="higher",
+        p11d_value=100000, includes_insurance=True, mileage_allowance=20000
+    )
+    # Year starts 2027-10-04, ends 2028-10-04. Midpoint is 2028-04-04.
+    # mid < April 6 -> tax year 2027 -> BiK 5%.
+    # BiK tax = 100,000 * 5% * 40% = 2,000.
+    years_2027 = lease_year_costs(lease, RunningCosts(), TaxParams(), 20000, 1.0, start=date(2027, 10, 4))
+    assert years_2027[0].bik_tax == pytest.approx(100000 * 0.05 * 0.40)
+
+    # Year starts 2027-10-08, ends 2028-10-08. Midpoint is 2028-04-08.
+    # mid >= April 6 -> tax year 2028 -> BiK 7%.
+    # BiK tax = 100,000 * 7% * 40% = 2,800.
+    years_2028 = lease_year_costs(lease, RunningCosts(), TaxParams(), 20000, 1.0, start=date(2027, 10, 8))
+    assert years_2028[0].bik_tax == pytest.approx(100000 * 0.07 * 0.40)
+
+
+def test_presets_scale_with_hold_years():
+    """Verify presets scale exit percentages dynamically based on hold_years."""
+    from models import preset, suggest_exit_pct
+    # For a 3-year hold:
+    p_3 = preset("central", hold_years=3.0)
+    assert p_3["exit"]["pct_retained"] == pytest.approx(suggest_exit_pct(3.0)) # 0.55
+    
+    opt_3 = preset("optimistic", hold_years=3.0)
+    assert opt_3["exit"]["pct_retained"] == pytest.approx(0.60) # 0.55 + 0.05
+    
+    pess_3 = preset("pessimistic", hold_years=3.0)
+    assert pess_3["exit"]["pct_retained"] == pytest.approx(0.38) # 0.55 - 0.17
+
+    # For a 5-year hold:
+    p_5 = preset("central", hold_years=5.0)
+    assert p_5["exit"]["pct_retained"] == pytest.approx(suggest_exit_pct(5.0)) # 0.32
+    
+    opt_5 = preset("optimistic", hold_years=5.0)
+    assert opt_5["exit"]["pct_retained"] == pytest.approx(0.32 + 0.05) # 0.37
+    
+    pess_5 = preset("pessimistic", hold_years=5.0)
+    assert pess_5["exit"]["pct_retained"] == pytest.approx(0.32 - 0.17) # 0.15

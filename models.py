@@ -68,14 +68,14 @@ class TaxParams(BaseModel):
     Sources:
     - VED standard rate £200/yr for EVs first reg before Apr 2025 (2026/27 rate)
       https://commonslibrary.parliament.uk/research-briefings/cbp-9690/
-    - ECS £440/yr for 5 years from first VED liability. For an Apr-2024 reg EV,
-      first VED liability is Apr 2025, so ECS runs Apr 2025 — Apr 2030.
+    - ECS £440/yr for 5 years from first VED liability. Note that EVs registered
+      before 1 April 2025 (like this Apr-2024 car) are exempt, so the default is £0.
       https://www.bvrla.co.uk/home/support/guidance/ved-changes-expensive-car-supplement-for-evs
     - eVED 3p/mile for BEVs from Apr 2028, paid alongside VED (Autumn Budget 2025).
       https://www.rac.co.uk/drive/news/motoring-news/autumn-budget-2025/
     """
     ved_standard: float = Field(200, ge=0)
-    ecs_annual: float = Field(440, ge=0)
+    ecs_annual: float = Field(0.0, ge=0)
     ecs_first_liable: date = Field(date(2025, 4, 1))
     ecs_years_total: int = Field(5, ge=0)
     per_mile_tax_enabled: bool = True
@@ -151,6 +151,14 @@ class LeaseComparator(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+def add_years(d: date, years: int) -> date:
+    """Add years to a date safely, handling leap years (Feb 29 -> Feb 28)."""
+    try:
+        return date(d.year + years, d.month, d.day)
+    except ValueError:
+        return date(d.year + years, 2, 28)
+
+
 def suggest_exit_pct(hold_years: float) -> float:
     """Suggested fraction of buy-out retained at sale, given hold length.
 
@@ -174,8 +182,7 @@ def ecs_years_active(tax: TaxParams, year_start: date, year_end: date) -> float:
     value in [0, 1] representing the share of this billing year that the
     surcharge is active — lets us pro-rate the final partial year.
     """
-    ecs_end = date(tax.ecs_first_liable.year + tax.ecs_years_total,
-                   tax.ecs_first_liable.month, tax.ecs_first_liable.day)
+    ecs_end = add_years(tax.ecs_first_liable, tax.ecs_years_total)
     overlap_start = max(year_start, tax.ecs_first_liable)
     overlap_end = min(year_end, ecs_end)
     if overlap_end <= overlap_start:
@@ -264,7 +271,7 @@ def _split_years(hold_years: float, start: date) -> list[tuple[int, date, date, 
     remainder = hold_years - whole
     cursor = start
     for i in range(whole):
-        next_cursor = date(cursor.year + 1, cursor.month, cursor.day)
+        next_cursor = add_years(cursor, 1)
         buckets.append((i + 1, cursor, next_cursor, 1.0))
         cursor = next_cursor
     if remainder > 0:
@@ -374,7 +381,7 @@ def lease_year_costs(
             # BiK rate is dictated by the UK tax year (April–April). For a year
             # bucket that straddles 6 April, pick the rate at the bucket midpoint.
             mid = y_start + (y_end - y_start) / 2
-            bik_year = mid.year - (1 if mid.month < 4 else 0)
+            bik_year = mid.year if mid >= date(mid.year, 4, 6) else mid.year - 1
             bik_rate = bik_rate_for_tax_year(bik_year)
             bik_tax = (lease.p11d_value * (bik_rate / 100.0)
                        * INCOME_TAX_RATE[lease.tax_band] * fraction)
@@ -383,7 +390,7 @@ def lease_year_costs(
             gross_annual = 0.0
             tax_savings = 0.0
             mid = y_start + (y_end - y_start) / 2
-            bik_year = mid.year - (1 if mid.month < 4 else 0)
+            bik_year = mid.year if mid >= date(mid.year, 4, 6) else mid.year - 1
             bik_rate = bik_rate_for_tax_year(bik_year)
             bik_tax = (lease.p11d_value * (bik_rate / 100.0)
                        * INCOME_TAX_RATE[lease.tax_band] * fraction)
@@ -480,7 +487,7 @@ def evaluate_preset(name: Literal["pessimistic", "central", "optimistic"],
     lease is a known fixed quote so it's held constant across scenarios using
     the caller's lease object (or LeaseComparator() defaults if not supplied).
     """
-    p = preset(name)
+    p = preset(name, hold_years=hold_years)
     purchase = PurchaseInputs(
         buyout_price=p["purchase"]["buyout_price"],
         hold_years=hold_years,
@@ -507,7 +514,7 @@ def evaluate_preset(name: Literal["pessimistic", "central", "optimistic"],
     }
 
 
-def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
+def preset(name: Literal["pessimistic", "central", "optimistic"], hold_years: float = 3.0) -> dict:
     """Return a bundle of input overrides for a named scenario.
 
     Defaults rebased May 2026 against actual Autotrader listings + Finder national avg:
@@ -518,6 +525,7 @@ def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
     - Insurance: BMW i4 national average £1,430 (finder.com Feb 2026).
       Pessimistic = +50% renewal-shock anecdote from i4talk forum.
     """
+    central_pct = suggest_exit_pct(hold_years)
     if name == "pessimistic":
         return {
             "purchase": {"buyout_price": 30_000, "cost_of_capital_pct": 8.5},
@@ -526,7 +534,7 @@ def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
                         "other_maintenance_annual": 500,
                         "battery_reserve_annual": 700},
             "tax": {"per_mile_tax_rate_pence": 4.0, "per_mile_tax_enabled": True},
-            "exit": {"pct_retained": 0.38},
+            "exit": {"pct_retained": max(0.0, central_pct - 0.17)},
         }
     if name == "optimistic":
         return {
@@ -536,7 +544,7 @@ def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
                         "other_maintenance_annual": 200,
                         "battery_reserve_annual": 0},
             "tax": {"per_mile_tax_rate_pence": 3.0, "per_mile_tax_enabled": True},
-            "exit": {"pct_retained": 0.60},
+            "exit": {"pct_retained": min(1.0, central_pct + 0.05)},
         }
     # central
     return {
@@ -546,5 +554,5 @@ def preset(name: Literal["pessimistic", "central", "optimistic"]) -> dict:
                     "other_maintenance_annual": 300,
                     "battery_reserve_annual": 0},
         "tax": {"per_mile_tax_rate_pence": 3.0, "per_mile_tax_enabled": True},
-        "exit": {"pct_retained": suggest_exit_pct(3.0)},
+        "exit": {"pct_retained": central_pct},
     }

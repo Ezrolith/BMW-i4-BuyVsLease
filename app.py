@@ -50,7 +50,7 @@ RESEARCH_MD = """
 | Topic | Default | Source |
 |---|---|---|
 | VED standard rate (EV, reg before Apr 2025) | £200/yr | [Commons Library CBP-9690](https://commonslibrary.parliament.uk/research-briefings/cbp-9690/) |
-| Expensive Car Supplement | £440/yr × 5 yrs from Apr 2025 (ends Apr 2030) | [Honest John 2026/27](https://www.honestjohn.co.uk/news/tax-insurance-and-warranties/2026-04/april-ved-tax-increases-2026-rates-explained/) |
+| Expensive Car Supplement | £0/yr (Exempt - registered before Apr 2025) | [Gov.uk VED guidelines](https://www.gov.uk/vehicle-tax) |
 | £50k threshold rise | Doesn't apply — only for EVs reg on/after 1 Apr 2025 | [gov.uk](https://www.gov.uk/government/publications/vehicle-excise-duty-for-expensive-car-supplement-threshold-increase-for-zero-emission-vehicles/increase-in-the-vehicle-excise-duty-expensive-car-supplement-threshold-for-zero-emission-cars) |
 | Per-mile EV tax | **3p/mile from Apr 2028, confirmed** | [RAC Autumn Budget 2025](https://www.rac.co.uk/drive/news/motoring-news/autumn-budget-2025/) |
 | Buy-out central | £22,000 (2023 i4 eDrive40 M Sport @ 65k miles ~£22,490 retail May 2026) | [Autotrader](https://www.autotrader.co.uk/cars/used/bmw/i4) |
@@ -62,7 +62,7 @@ RESEARCH_MD = """
 | HV battery warranty | 8yr or 100k miles, ~70% capacity guarantee | [Recharged reliability](https://recharged.com/articles/bmw-i4-reliability-2026) |
 | Lease at £700/mo | Does NOT typically include insurance — that's a £1k+/mo tier | [Carwow lease deals](https://www.carwow.co.uk/bmw/i4/lease) |
 
-**ECS clock**: EV first reg Apr 2024 → first VED liable Apr 2025 → ECS active Apr 2025 – Apr 2030. All three years inside a 3-year hold from Apr 2027 are billed.
+**ECS exemption**: EVs registered before 1 April 2025 are completely exempt from the Expensive Car Supplement. Since this i4 was registered in April 2024, it is exempt from the £440/yr surcharge.
 
 **Battery reserve**: At 20k miles/yr the car crosses 100k miles around year 3 of hold. The 8yr/100k HV-battery warranty expires whichever comes first. The reserve line lets you pre-fund that risk.
 """
@@ -74,7 +74,7 @@ RESEARCH_MD = """
 
 # Bump when default values change in a way that should overwrite existing sessions.
 # Old sessions with a lower version (or none) get a one-time wipe-and-reseed.
-_STATE_VERSION = 4
+_STATE_VERSION = 5
 
 
 def _init_state():
@@ -104,7 +104,7 @@ def _init_state():
         "other_maintenance_annual": p["running"]["other_maintenance_annual"],
         "battery_reserve_annual": p["running"]["battery_reserve_annual"],
         "ved_standard": 200.0,
-        "ecs_annual": 440.0,
+        "ecs_annual": 0.0,
         "per_mile_tax_enabled": True,
         "per_mile_tax_rate_pence": p["tax"]["per_mile_tax_rate_pence"],
         "per_mile_tax_start": date(2028, 4, 1),
@@ -138,7 +138,7 @@ def _init_state():
 
 def _apply_preset(name: str):
     """Overlay a preset onto current state — user can tweak after."""
-    p = preset(name)  # type: ignore[arg-type]
+    p = preset(name, hold_years=st.session_state.hold_years)  # type: ignore[arg-type]
     st.session_state.buyout_price = p["purchase"]["buyout_price"]
     st.session_state.cost_of_capital_pct = p["purchase"]["cost_of_capital_pct"]
     st.session_state.insurance_annual = p["running"]["insurance_annual"]
@@ -276,7 +276,11 @@ with st.sidebar.expander("Tax", expanded=True):
 
     st.number_input("ECS £/yr", min_value=0.0, key="ecs_annual", step=10.0,
                     help="Expensive Car Supplement, 5 yrs from first VED liability (Apr 2025)")
-    _typical("ecs_annual", 0, 600, "£440/yr is the 2026/27 ECS rate.")
+    if FIRST_REG_DATE < date(2025, 4, 1):
+        st.caption(":information_source: **Exempt:** EVs registered before 1 April 2025 "
+                   "are exempt from the Expensive Car Supplement. Defaulted to £0.")
+    else:
+        _typical("ecs_annual", 0, 600, "£440/yr is the 2026/27 ECS rate.")
 
     st.checkbox("Per-mile EV tax (Apr 2028)", key="per_mile_tax_enabled")
     st.number_input("Per-mile rate (pence)", min_value=0.0, key="per_mile_tax_rate_pence", step=0.25)
