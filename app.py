@@ -84,7 +84,7 @@ RESEARCH_MD = """
 
 # Bump when default values change in a way that should overwrite existing sessions.
 # Old sessions with a lower version (or none) get a one-time wipe-and-reseed.
-_STATE_VERSION = 11
+_STATE_VERSION = 12
 
 
 # EXACT personal PCH quotes captured 10 June 2026 at the target config —
@@ -161,11 +161,15 @@ SEED_MARKET_DEALS = [
     # unpublished → 10p default; Ioniq 6 verified 12.0p; BYD Seal AWD showed
     # 21.6p at NVC, so confirm the Design RWD's rate before signing.
     # Ratebooks behind these expire 30 Jun–10 Jul 2026.
-    {"Source": "LeaseLoco", "Description": "Tesla Model 3 Standard RWD 62.5kWh (332mi) — exact 36mo/20k/1+35 (£0 fee)",
-     "Monthly £": 443.60, "Upfront £": 0.0, "Miles/yr": 20_000,
+    # Tesla rows re-verified LIVE 11 Jun pm via the in-app API client: the
+    # morning sweep's £443.60 RWD deal had rotated away and its £611.74
+    # LR RWD figure was an agent VAT slip (true inc-VAT ≈ £734; Carwow £744
+    # and FVL £729 corroborate). Current exact quotes below.
+    {"Source": "LeaseLoco", "Description": "Tesla Model 3 Standard RWD 62.5kWh (332mi) — exact 36mo/20k/1+35 (£300 fee)",
+     "Monthly £": 529.48, "Upfront £": 300.0, "Miles/yr": 20_000,
      "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": 777.0},
-    {"Source": "LeaseLoco", "Description": "Tesla Model 3 Long Range RWD 85kWh (466mi) — exact 36mo/20k/1+35 (£0 fee)",
-     "Monthly £": 611.74, "Upfront £": 0.0, "Miles/yr": 20_000,
+    {"Source": "LeaseLoco", "Description": "Tesla Model 3 Long Range RWD 85kWh (466mi) — exact 36mo/20k/1+35 (£300 fee)",
+     "Monthly £": 730.48, "Upfront £": 300.0, "Miles/yr": 20_000,
      "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": 919.0},
     {"Source": "LeaseLoco", "Description": "Skoda Enyaq 85 SE L RWD 82kWh (359mi) — exact 36mo/20k/1+35 (£295 fee)",
      "Monthly £": 478.55, "Upfront £": 295.0, "Miles/yr": 20_000,
