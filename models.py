@@ -118,6 +118,23 @@ def bik_rate_for_tax_year(tax_year_start: int) -> float:
     return max(EV_BIK_SCHEDULE.values())
 
 
+def net_of_salary_sacrifice(gross_monthly: float, tax_band: "TaxBand",
+                            p11d_value: float, on: date) -> float:
+    """True net-pay cost of a salary-sacrificed lease on a given date.
+
+    A gross sacrifice avoids income tax + employee NI on that slice of salary
+    (MARGINAL_RELIEF) but triggers BiK on the car's P11d at the tax year's
+    rate. This is the number a net-pay PCH quote must beat — comparing a PCH
+    monthly against the raw gross sacrifice flatters the PCH deal badly
+    (e.g. £1,100 gross is ~£836/mo of take-home for a basic-rate payer in
+    2026/27, ~£726 for higher rate).
+    """
+    bik_year = on.year if on >= date(on.year, 4, 6) else on.year - 1
+    bik_monthly = (p11d_value * (bik_rate_for_tax_year(bik_year) / 100.0)
+                   * INCOME_TAX_RATE[tax_band] / 12.0)
+    return gross_monthly * (1 - MARGINAL_RELIEF[tax_band]) + bik_monthly
+
+
 class LeaseComparator(BaseModel):
     """The fresh EV lease you'd take instead of buying the car out.
 

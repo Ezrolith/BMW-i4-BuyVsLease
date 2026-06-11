@@ -7,8 +7,11 @@ Streamlit app for comparing the total cost of buying out a leased BMW i4 eDrive4
 - BMW i4 eDrive40 M Sport, 83.9 kWh, list £66,124 with options
 - First registered April 2024, lease end April 2027 at 60,000 contractual miles
 - Current mileage May 2026: 41,500
-- Personal lease at ~£1,100/month today; default comparator is a fresh EV salary-sacrifice
-  lease at £1,000/month gross (basic-rate IT+NI relief applied, BiK added back)
+- Current car is on a **salary-sacrifice work scheme at £1,100/month gross** — its true
+  net cost is ≈£836/mo (basic rate) or ≈£726/mo (higher rate) once IT+NI relief and BiK
+  are applied, and that net figure (not the gross) is the "vs today" anchor for net-pay
+  PCH comparisons (toggleable). Default comparator is a fresh EV salary-sacrifice lease
+  at £1,000/month gross (relief applied, BiK added back)
 - Driver: 41, full NCB, M-postcode (Salford)
 
 ## Run it

@@ -5,6 +5,31 @@ Rolling notes to pick up work between sessions. Newest entry first.
 
 ---
 
+## Session — 2026-06-11 (fairness fix): "vs today" now uses the scheme's NET cost
+
+### What was asked
+Peter spotted a real modelling error: market PCH deals are paid from NET pay, but the
+"vs today" comparisons used his £1,100 GROSS salary sacrifice — ignoring the IT+NI relief
+(and BiK) of the current work scheme. "It feels like it's not a fair comparison."
+
+### He was right — and it shifts every verdict
+New `net_of_salary_sacrifice(gross, band, p11d, on)` in models.py: net = gross × (1 −
+relief) + P11d × BiK-rate(tax year of `on`) × income-tax-rate / 12. For £1,100 gross,
+2026/27 (4% BiK on £66,124): **≈£836/mo net at basic rate, ≈£726 at higher rate**.
+Corrected "vs today" deltas (basic / higher):
+- Used M3 LR AWD lease £476 → saves 360 / 250 (was "521")
+- Tesla M3 RWD lease £579 → saves 257 / 147
+- i4 buy-out £599 → saves 237 / 127
+- BYD Seal Excellence £703 → saves 133 / **23** (marginal for a higher-rate payer!)
+- Mercedes CLA ~£1,038 → **+202 / +312 WORSE than today**
+App changes: `current_is_salsac` checkbox (default on, exported), net anchor used in the
+top reference line, the market table's "vs today" column + caption, and the cheapest-deal
+verdict; all show the gross→net derivation. +2 tests (band maths, Apr-6 tax-year
+boundary), suite 68. Band is a UI toggle — he hinted he may be higher-rate (unconfirmed),
+which materially tightens the case for switching.
+
+---
+
 ## Session — 2026-06-11 (live API): in-app LeaseLoco quoting + review fixes
 
 ### What was asked

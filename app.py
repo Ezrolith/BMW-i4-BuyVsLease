@@ -24,6 +24,7 @@ from models import (
     MARGINAL_RELIEF,
     MarketDeal,
     jsonable_records,
+    net_of_salary_sacrifice,
     PurchaseInputs,
     RunningCosts,
     TaxParams,
@@ -225,7 +226,7 @@ EXPORT_KEYS = [
     "lease_monthly_cost", "lease_mileage_allowance", "lease_excess_pence",
     "lease_includes_service", "lease_includes_ved", "lease_includes_insurance",
     "lease_includes_eved", "lease_includes_tyres", "lease_insurance_annual",
-    "lease_type", "tax_band", "p11d_value",
+    "lease_type", "tax_band", "p11d_value", "current_is_salsac",
     "market_add_insurance", "market_add_maintenance", "market_includes_eved",
 ]
 
@@ -293,6 +294,11 @@ def _init_state():
         "market_add_insurance": True,
         "market_add_maintenance": True,
         "market_includes_eved": True,
+        # Today's £1,100 i4 scheme is salary-sacrificed from GROSS pay — its
+        # true net cost (gross less IT/NI relief, plus BiK) is what any
+        # net-pay PCH deal must beat. Untick if comparing against a lease
+        # paid from net pay.
+        "current_is_salsac": True,
         "initialised": True,
     }
     for key, value in defaults.items():
@@ -548,6 +554,12 @@ with st.sidebar.expander("Lease tax treatment", expanded=True):
                  "higher": "Higher (40% IT + 2% NI = 42% relief)",
                  "additional": "Additional (45% IT + 2% NI = 47% relief)",
              }[x])
+    st.checkbox("Current £1,100 lease is salary sacrifice",
+                key="current_is_salsac",
+                help="Today's scheme comes out of GROSS pay (saves IT + NI, "
+                     "adds BiK). 'vs today' comparisons then use its true "
+                     "net cost rather than the £1,100 gross sacrifice — "
+                     "otherwise net-pay PCH deals look unfairly good.")
     st.number_input("P11d value of leased car £", min_value=0.0,
                     key="p11d_value", step=500.0,
                     help=f"Pre-populated with the car's list price (£{LIST_PRICE_GBP:,.0f}). "
@@ -733,13 +745,26 @@ elif delta_mo > 0:
 else:
     st.markdown("### Verdict: **Tie** — both options cost the same per month.")
 
-# Reference: what you pay today, so both options are anchored against the status quo.
+# Reference: what you pay today, so both options are anchored against the
+# status quo. The current scheme is salary-sacrificed from GROSS pay, so the
+# fair anchor is its NET cost: gross less IT/NI relief, plus BiK on the i4's
+# P11d at this tax year's rate — not the £1,100 gross sacrifice.
+if st.session_state.current_is_salsac:
+    today_net = net_of_salary_sacrifice(
+        CURRENT_LEASE_MONTHLY, st.session_state.tax_band,
+        p11d_value=LIST_PRICE_GBP, on=date.today())
+    today_label = (f"≈£{today_net:,.0f}/mo net (£{CURRENT_LEASE_MONTHLY:,.0f} "
+                   f"gross sacrifice, {st.session_state.tax_band}-rate relief, "
+                   "BiK added back)")
+else:
+    today_net = CURRENT_LEASE_MONTHLY
+    today_label = f"£{today_net:,.0f}/mo"
 cheapest = min(own_mo, lease_mo)
-vs_today = CURRENT_LEASE_MONTHLY - cheapest
+vs_today = today_net - cheapest
 st.caption(
-    f"For reference, you pay **£{CURRENT_LEASE_MONTHLY:,.0f}/mo** on the current lease today. "
+    f"For reference, the current lease truly costs you **{today_label}**. "
     f"Cheapest modelled option (£{cheapest:,.0f}/mo) is "
-    f"**£{vs_today:,.0f}/mo {'less' if vs_today >= 0 else 'more'}** than today — "
+    f"**£{abs(vs_today):,.0f}/mo {'less' if vs_today >= 0 else 'more'}** than today — "
     f"£{abs(vs_today) * purchase.hold_years * 12:,.0f} over {purchase.hold_years:.1f} yrs. "
     f"(Today's car is fully inclusive; check the lease toggles match for a fair compare.)"
 )
@@ -1003,13 +1028,17 @@ else:
         "Effective £/mo": f"£{r['effective_monthly']:,.0f}",
         "vs your lease": f"£{r['effective_monthly'] - lease_mo:+,.0f}",
         "vs buy": f"£{r['effective_monthly'] - own_mo:+,.0f}",
-        "vs today": f"£{r['effective_monthly'] - CURRENT_LEASE_MONTHLY:+,.0f}",
+        "vs today": f"£{r['effective_monthly'] - today_net:+,.0f}",
     } for r in market_results]
     st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
     st.caption("Effective £/mo = headline + amortised upfront + excess mileage + "
                "insurance + maintenance, costed over min(term, hold). **vs** columns: "
-               "negative = the deal is cheaper than that option. Today = "
-               f"£{CURRENT_LEASE_MONTHLY:,.0f}/mo.")
+               "negative = the deal is cheaper than that option. These deals are "
+               "paid from NET pay, so 'today' = the current scheme's true net cost: "
+               f"**£{today_net:,.0f}/mo**"
+               + (f" (£{CURRENT_LEASE_MONTHLY:,.0f} gross salary sacrifice less "
+                  f"{st.session_state.tax_band}-rate IT/NI relief, plus BiK)."
+                  if st.session_state.current_is_salsac else "."))
 
     hold_months = round(purchase.hold_years * 12)
     mismatched = [r for r in market_results if r["term_months"] != hold_months]
@@ -1021,11 +1050,11 @@ else:
             "the full upfront counted; early-termination charges aren't modelled."
         )
 
-    # Cheapest-deal verdict, anchored to buying and to today.
+    # Cheapest-deal verdict, anchored to buying and to today's true net cost.
     best = market_results[0]
     eff = best["effective_monthly"]
     vs_buy = eff - own_mo
-    vs_today = CURRENT_LEASE_MONTHLY - eff
+    vs_today = today_net - eff
     msg = (f"**Cheapest market deal: {best['source']} — {best['label']} at an "
            f"effective £{eff:,.0f}/mo** (£{best['headline_monthly']:,.0f} headline, "
            f"all-in once upfront, excess miles, insurance and maintenance are added). ")
@@ -1034,7 +1063,9 @@ else:
     else:
         msg += f"Buying out is still £{vs_buy:,.0f}/mo cheaper than even this deal. "
     msg += (f"It's £{abs(vs_today):,.0f}/mo {'less' if vs_today >= 0 else 'more'} "
-            f"than the £{CURRENT_LEASE_MONTHLY:,.0f}/mo you pay today.")
+            f"than the £{today_net:,.0f}/mo your current scheme truly costs"
+            + (f" net (£{CURRENT_LEASE_MONTHLY:,.0f} gross sacrificed)."
+               if st.session_state.current_is_salsac else " today."))
     (st.success if vs_buy < 0 else st.info)(msg)
 
     # Bar chart: every deal's all-in effective monthly vs buy and your own lease.

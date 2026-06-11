@@ -609,6 +609,28 @@ def test_market_deal_insurance_override_replaces_running_assumption():
         == pytest.approx((1_450 - 950) / 12)
 
 
+def test_net_of_salary_sacrifice_basic_and_higher():
+    """£1,100 gross sacrificed in 2026/27 (4% BiK on £66,124 P11d):
+    basic = 72% of gross + 20% BiK tax; higher = 58% of gross + 40% BiK tax."""
+    from models import net_of_salary_sacrifice
+    on = date(2026, 6, 11)
+    basic = net_of_salary_sacrifice(1_100, "basic", 66_124, on)
+    higher = net_of_salary_sacrifice(1_100, "higher", 66_124, on)
+    assert basic == pytest.approx(1_100 * 0.72 + 66_124 * 0.04 * 0.20 / 12)
+    assert higher == pytest.approx(1_100 * 0.58 + 66_124 * 0.04 * 0.40 / 12)
+    assert basic == pytest.approx(836.08, abs=0.01)
+    assert higher == pytest.approx(726.41, abs=0.5)
+
+
+def test_net_of_salary_sacrifice_tax_year_boundary():
+    """5 Apr 2027 is still 2026/27 (4% BiK); 6 Apr 2027 rolls to 2027/28 (5%)."""
+    from models import net_of_salary_sacrifice
+    before = net_of_salary_sacrifice(0, "basic", 66_124, date(2027, 4, 5))
+    after = net_of_salary_sacrifice(0, "basic", 66_124, date(2027, 4, 6))
+    assert before == pytest.approx(66_124 * 0.04 * 0.20 / 12)
+    assert after == pytest.approx(66_124 * 0.05 * 0.20 / 12)
+
+
 def test_jsonable_records_unwraps_numpy_and_nan():
     """DataFrame records (numpy scalars, NaN blanks) become plain JSON-safe Python."""
     import numpy as np
