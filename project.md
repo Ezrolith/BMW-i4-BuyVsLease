@@ -5,6 +5,60 @@ Rolling notes to pick up work between sessions. Newest entry first.
 
 ---
 
+## Session — 2026-06-11 (later): EV field expansion + critical VAT correction
+
+### What was asked
+Peter: don't limit to the i4/CLA — expand to other EVs, Teslas with **exact variant
+labels** (RWD vs Long Range etc.), and "cheaper other electric cars", LeaseLoco
+especially. Money-first, range matters (20k mi/yr).
+
+### CRITICAL data correction (affects all prior LeaseLoco numbers)
+**LeaseLoco's lease-profile API returns EX-VAT prices even for personal leases** — the
+site's JS multiplies by 1.2 for display. The 10 Jun i4 capture missed this, so all
+LeaseLoco i4 seed rows were ~17% understated. Corrected ×1.2 and cross-verified live
+(eDrive35 Sport: 786.17 ex → **£943.40 inc**, exact match on a fresh 11 Jun quote; fee
+£249 ex = £298.80 inc, matches VehicleFlex's page). **Consequence: there is no cheap new
+i4 — the floor is ~£1,101/mo all-in, i.e. today's £1,100.** Any future API re-quote MUST
+apply ×1.2 (Carwow Leasey's API is already inc-VAT; NVC/Select pages are inc-VAT).
+Also: **the £574 used i4 M50 sold** — row removed.
+
+### EV field sweep (5 agents, 112 raw rows, all exact quotes at 36/20k/1+35)
+8 rows added (exact variant + WLTP range in every label, per-row insurance estimate from
+ABI group, anchor i4-eDrive40-group-38 = £950):
+| Car | Headline | All-in effective |
+|---|---|---|
+| Tesla Model 3 Standard RWD 62.5kWh, 332mi | £443.60, £0 fee | **£579** |
+| Skoda Enyaq 85 SE L, 359mi | £478.55 | £622 |
+| Hyundai Ioniq 6 Ultimate AWD, 323mi (12p excess verified) | £484.81 | £652 |
+| Cupra Tavascan V1, 343mi (in stock) | £514.86 | £654 |
+| BYD Seal Design, 354mi (in stock; group 46 ins!) | £484.00 | £658 |
+| Polestar 2 LR SM, 409mi (in stock, run-out) | £540.10 | £705 |
+| Tesla Model 3 Long Range RWD 85kWh, 466mi | £611.74 | £759 |
+| VW ID.7 Match Pro S Plus, 434mi | £599.37 | £760 |
+
+**Verdict flip: the Model 3 RWD (£579) now beats even buying out the i4 (£599 central)
+and saves £521/mo vs today.** The M3 LR RWD offers 466mi (more than the CLA 250+) at
+£759 all-in. The whole field undercuts every i4 option by £340–£520/mo.
+
+### Mechanics / repo changes
+- `SEED_MARKET_DEALS`: i4 LeaseLoco rows VAT-corrected (kept M Sport like-for-like +
+  eDrive35 floor), used-M50 row removed (sold), 8 EV rows added → 16 rows total;
+  `_STATE_VERSION` → 10; caption/README rewritten for the EV field.
+- Suite 53 passing; AppTest 0 exceptions; ranking + verdict verified headlessly.
+- Sweep agent tricks recorded: LeaseLoco search/v2 + lease-profile APIs (ex-VAT, needs
+  browser-ish headers), Carwow Leasey bulk API (inc VAT), NVC/Select URL params, FVL
+  honours ?term/mileage/initial_rental, Moneyshake locks 12mo initial. Leasing.com/
+  hotukdeals/Reddit blocked. Ratebooks expire 30 Jun–10 Jul 2026.
+
+### Possible next steps
+- Insurance estimates are formula-scaled from ABI groups — get a real quote for the
+  Model 3 RWD before deciding (group 32 → ~£777/yr est; BYD's group 46 → ~£1,241 est).
+- Moneyshake's Ioniq 6 Premium AWD ~£474/mo effective requires a 12-month initial —
+  add a row if Peter will tolerate heavy upfront.
+- Re-quote everything when ratebooks roll (30 Jun–10 Jul); check NVC used stock again.
+
+---
+
 ## Session — 2026-06-11: ECS resolved, deal details verified, insurance overrides, Mercedes CLA added
 
 ### What was asked

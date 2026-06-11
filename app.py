@@ -77,7 +77,7 @@ RESEARCH_MD = """
 
 # Bump when default values change in a way that should overwrite existing sessions.
 # Old sessions with a lower version (or none) get a one-time wipe-and-reseed.
-_STATE_VERSION = 9
+_STATE_VERSION = 10
 
 
 # EXACT personal PCH quotes captured 10 June 2026 at the target config —
@@ -95,28 +95,22 @@ _STATE_VERSION = 9
 # - Carwow prices come from Arval ratebooks expiring 30 Jun 2026 — re-quote
 #   after that. Every row is editable; paste fresh configurator quotes in.
 SEED_MARKET_DEALS = [
-    # LeaseLoco (supplier Vehicle Flex, factory order, +£249 doc fee) — the
-    # cheapest exact-config source found, including a like-for-like eDrive40
-    # M Sport (the user's current car, new shape).
-    {"Source": "LeaseLoco", "Description": "i4 eDrive40 M Sport new — exact 36mo/20k/1+35 (£249 fee)",
-     "Monthly £": 826.12, "Upfront £": 249.0, "Miles/yr": 20_000,
+    # LeaseLoco (supplier Vehicle Flex/Dreamlease, factory order). VAT
+    # CORRECTION 11 Jun 2026: LeaseLoco's lease-profile API returns EX-VAT
+    # prices even for personal leases (the site's JS ×1.2s them for display) —
+    # the 10 Jun capture missed that, so these are the same quotes ×1.2.
+    # Cross-check: eDrive35 re-quoted live on 11 Jun at exactly £943.40 inc
+    # VAT. Fee £249 ex VAT = £298.80 inc. Any future API re-quote MUST ×1.2.
+    {"Source": "LeaseLoco", "Description": "i4 eDrive40 M Sport new — exact 36mo/20k/1+35 (£299 fee)",
+     "Monthly £": 991.34, "Upfront £": 298.80, "Miles/yr": 20_000,
      "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": None},
-    {"Source": "LeaseLoco", "Description": "i4 eDrive40 Sport new — exact 36mo/20k/1+35 (£249 fee)",
-     "Monthly £": 816.18, "Upfront £": 249.0, "Miles/yr": 20_000,
+    {"Source": "LeaseLoco", "Description": "i4 eDrive35 Sport new — exact 36mo/20k/1+35 (£299 fee) — i4 floor",
+     "Monthly £": 943.40, "Upfront £": 298.80, "Miles/yr": 20_000,
      "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": None},
-    {"Source": "LeaseLoco", "Description": "i4 eDrive35 Sport new — exact 36mo/20k/1+35 (£249 fee) — range floor",
-     "Monthly £": 786.17, "Upfront £": 249.0, "Miles/yr": 20_000,
-     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": None},
-    # Used-lease stock car (MW23 EKN, vehicle id 7395) — by far the cheapest i4
-    # at the target terms. Details confirmed on the quote page 11 Jun 2026:
-    # £574/mo at exactly 36/20k/1+35, £357 processing fee, excess 6p +VAT
-    # (=7.2p inc VAT, stepping to 10.8p beyond 5k excess miles). Caveats: BMW
-    # 3-yr warranty likely expired (battery warranty to ~2031); optional used
-    # maintenance package is a steep £209/mo. Insurance override: M50 is ABI
-    # group 44 vs eDrive40's 38 → ~£1,140/yr for this profile (estimate).
-    {"Source": "Nationwide VC", "Description": "USED 2023 i4 M50, 55k mi — exact 36mo/20k/1+35 (£357 fee)",
-     "Monthly £": 574.0, "Upfront £": 357.0, "Miles/yr": 20_000,
-     "Term (mo)": 36, "Excess p/mi": 7.2, "Ins £/yr": 1_140.0},
+    # The NVC used 2023 i4 M50 stock car (£574/mo, the 10-11 Jun standout) was
+    # SOLD by the 11 Jun evening sweep — row removed. Used-lease stock moves
+    # fast; worth re-checking nationwidevehiclecontracts.co.uk/car-leasing/used
+    # periodically for one-off bargains.
     # Carwow Leasey API (funder Arval, +£295 admin fee).
     {"Source": "Carwow", "Description": "i4 eDrive40 Sport new — exact 36mo/20k/1+35 (£295 fee)",
      "Monthly £": 989.43, "Upfront £": 295.0, "Miles/yr": 20_000,
@@ -151,6 +145,39 @@ SEED_MARKET_DEALS = [
     {"Source": "e-car lease", "Description": "Mercedes CLA 250+ Sport EQ — 48mo/5k/9mo init (est: bus.+VAT)",
      "Monthly £": 618.32, "Upfront £": 4_946.59, "Miles/yr": 5_000,
      "Term (mo)": 48, "Excess p/mi": 10.0, "Ins £/yr": 1_050.0},
+    # --- The wider EV field (swept 11 Jun 2026, all ≥300mi WLTP) ----------
+    # All exact personal quotes inc VAT at 36mo/20k/1+35, cross-checked on at
+    # least one second source where noted. Variant + WLTP range in each label
+    # (user asked for exact variants — "Model 3" alone is meaningless).
+    # "Ins £/yr" = profile-scaled estimate from the variant's ABI group
+    # (anchor: i4 eDrive40 group 38 = £950, ~3.4%/group). Excess p/mi mostly
+    # unpublished → 10p default; Ioniq 6 verified 12.0p; BYD Seal AWD showed
+    # 21.6p at NVC, so confirm the Design RWD's rate before signing.
+    # Ratebooks behind these expire 30 Jun–10 Jul 2026.
+    {"Source": "LeaseLoco", "Description": "Tesla Model 3 Standard RWD 62.5kWh (332mi) — exact 36mo/20k/1+35 (£0 fee)",
+     "Monthly £": 443.60, "Upfront £": 0.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": 777.0},
+    {"Source": "LeaseLoco", "Description": "Tesla Model 3 Long Range RWD 85kWh (466mi) — exact 36mo/20k/1+35 (£0 fee)",
+     "Monthly £": 611.74, "Upfront £": 0.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": 919.0},
+    {"Source": "LeaseLoco", "Description": "Skoda Enyaq 85 SE L RWD 82kWh (359mi) — exact 36mo/20k/1+35 (£295 fee)",
+     "Monthly £": 478.55, "Upfront £": 295.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": 777.0},
+    {"Source": "LeaseLoco", "Description": "BYD Seal Design RWD 83kWh (354mi) — exact 36mo/20k/1+35 (£0 fee, in stock)",
+     "Monthly £": 484.00, "Upfront £": 0.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": 1_241.0},
+    {"Source": "Nationwide VC", "Description": "Hyundai Ioniq 6 Ultimate 77kWh AWD (323mi) — exact 36mo/20k/1+35 (£357 fee)",
+     "Monthly £": 484.81, "Upfront £": 357.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 12.0, "Ins £/yr": 1_050.0},
+    {"Source": "LeaseLoco", "Description": "Cupra Tavascan V1 RWD 77kWh (343mi) — exact 36mo/20k/1+35 (£0 fee, in stock)",
+     "Monthly £": 514.86, "Upfront £": 0.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": 831.0},
+    {"Source": "LeaseLoco", "Description": "Polestar 2 LR Single Motor 82kWh (409mi) — exact 36mo/20k/1+35 (£270 fee, in stock, run-out)",
+     "Monthly £": 540.10, "Upfront £": 269.99, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": 1_050.0},
+    {"Source": "Carwow", "Description": "VW ID.7 Match Pro S Plus 86kWh (434mi) — exact 36mo/20k/1+35 (£295 fee)",
+     "Monthly £": 599.37, "Upfront £": 295.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": 982.0},
 ]
 
 
@@ -714,27 +741,26 @@ st.divider()
 # Market lease deals (LeaseLoco / Carwow / brokers)
 # ---------------------------------------------------------------------------
 
-st.subheader("Market lease deals — i4 & rival EVs (LeaseLoco / Carwow / brokers)")
+st.subheader("Market lease deals — the EV field (LeaseLoco / Carwow / brokers)")
 st.caption(
-    "Personal PCH quotes, normalised the same way as everything else so they're "
+    "Personal PCH quotes across the EV field — BMW i4, Mercedes CLA EQ, Tesla, "
+    "Polestar, Hyundai, BYD, Škoda, Cupra, VW — normalised so they're "
     "apples-to-apples: any **upfront is amortised** across min(term, hold), "
-    "**insurance + maintenance (service + tyres) are added** (PCH deals don't "
-    f"bundle them), and your **{purchase.annual_miles:,}/yr** usage charges excess "
-    "mileage on any deal with a lower allowance. **i4 rows are exact quotes (10 Jun "
-    "2026) at the target config — 36 mo / 20k miles / 1-month initial.** The "
-    "**Mercedes CLA 250+ EQ rows (484 mi WLTP vs ~365 for the eDrive40)** are the "
-    "best published bases — the EV CLA is too new for brokers to list 36/20k "
-    "personal prices, so they're 48 mo/5k-mile quotes the normalisation penalises "
-    "accordingly; paste a real quote when listed. Upfront cells hold the extra over "
-    "a flat profile + one-off fees ((N−1)×monthly for N-months-initial; 1+35 = fees "
-    "only). The 2026 i4 range is eDrive35/40/M60 (M50 discontinued — the £574 row "
-    "is a used 2023 stock car). 'Ins £/yr' overrides your insurance per row "
-    "(M50/M60 group 44-45, CLA group 41, vs eDrive40's 38). Carwow rates expire "
-    "30 Jun 2026. Edit any cell, or use ＋ to add quotes. Sources: "
-    "[LeaseLoco](https://www.leaseloco.com/car-leasing/bmw/i4) · "
-    "[Carwow](https://www.carwow.co.uk/leasey/cars/bmw/i4) · "
-    "[Nationwide VC](https://www.nationwidevehiclecontracts.co.uk/car-leasing/bmw/i4) · "
-    "[Select](https://www.selectcarleasing.co.uk/car-leasing/bmw/i4/gran-coupe) · "
+    "**insurance + maintenance are added** (PCH deals don't bundle them; 'Ins £/yr' "
+    "overrides your insurance per row from each variant's ABI group), and your "
+    f"**{purchase.annual_miles:,}/yr** usage charges excess mileage on lower "
+    "allowances. Rows are **exact quotes (10–11 Jun 2026) at 36 mo / 20k miles / "
+    "1-month initial** with the exact variant + WLTP range in each label, except "
+    "the CLA rows (too new — best published 48mo/5k bases, penalised accordingly). "
+    "i4 LeaseLoco rows were **VAT-corrected on 11 Jun** (their API quotes ex-VAT; "
+    "×1.2 applied and re-verified). Upfront cells = extra over a flat profile + "
+    "one-off fees ((N−1)×monthly for N-months-initial; 1+35 = fees only). Most "
+    "ratebooks expire **30 Jun–10 Jul 2026**. Edit any cell, or use ＋ to add "
+    "quotes. Sources: "
+    "[LeaseLoco](https://www.leaseloco.com/car-leasing/electric) · "
+    "[Carwow](https://www.carwow.co.uk/leasey/cars) · "
+    "[Nationwide VC](https://www.nationwidevehiclecontracts.co.uk/car-leasing) · "
+    "[Select](https://www.selectcarleasing.co.uk/car-leasing) · "
     "[DriveElectric](https://www.drive-electric.co.uk/electric-car-leasing/mercedes-benz/cla-electric/) · "
     "[e-car lease](https://www.electriccarlease.co.uk/electric-car-leasing/mercedes-benz/cla)."
 )

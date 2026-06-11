@@ -68,10 +68,13 @@ with the URLs used to anchor each default. Key choices:
   window, partial-year pro-rating, market-deal normalisation (term-aware amortisation,
   eVED flag, component identities), JSON-safe record coercion, and 3 end-to-end scenarios.
 
-## Market lease deals — i4 & rival EVs (LeaseLoco / Carwow / brokers)
+## Market lease deals — the EV field (LeaseLoco / Carwow / brokers)
 
-An editable table of personal PCH quotes — BMW i4 variants plus rival EVs (currently the
-new electric Mercedes CLA 250+, chosen for its 484-mile WLTP range) — each normalised to an all-in **effective £/mo**
+An editable table of personal PCH quotes across the EV field — BMW i4 variants, the new
+electric Mercedes CLA 250+, Tesla Model 3 (variants labelled exactly: Standard RWD vs
+Long Range RWD), Polestar 2, Hyundai Ioniq 6, BYD Seal, Škoda Enyaq, Cupra Tavascan and
+VW ID.7, each with WLTP range in the label and a per-row insurance estimate from its ABI
+group — each normalised to an all-in **effective £/mo**
 so deals are apples-to-apples with the buy-out and your own lease: upfront amortised over
 the hold, excess mileage charged at your annual usage, insurance + maintenance added on
 top (PCH deals don't bundle them). Seed rows are **exact quotes (10 Jun 2026)** at the
