@@ -5,6 +5,38 @@ Rolling notes to pick up work between sessions. Newest entry first.
 
 ---
 
+## Session — 2026-06-11 (workplace scheme): Arval salary-sacrifice spreadsheet analysed
+
+### Input
+Peter's spreadsheet: `C:\Users\Peter\OneDrive\Desktop\Arval Salary Sacrifice - Car
+Leasing Options June 2026.xlsx` (quotes run 11 Jun 2026). Flexi terms: fully insured
+lease (third-party + own damage, postcode-rated), guaranteed maintenance, tyres,
+breakdown, accident management — and **no early-termination penalty on leaving the job
+(redundancy or by choice)**, which Peter values highly. Sheet maths verified exact
+(net = gross × (1−28%/42%) + BiK), but uses a FLAT 4% BiK — understates the rising
+5/7/9% schedule by ~£10-50/mo depending on band/start.
+
+### His-usage rows (36mo / 60k total = 20k/yr), net recomputed with rising BiK (Sep-2026 start / Apr-2027 start)
+| Car | Gross £/mo | Net basic | Net higher |
+|---|---|---|---|
+| Tesla M3 RWD (332mi, P11d £37,925) | 742.64 | £568 / £579 | **£498 / £519** |
+| Mercedes CLA 250+ AMG Line Exec (480mi, P11d £47,785) | 928.53 | £711 / £724 | £623 / £650 |
+| Tesla M3 LR RWD (466mi) | 945.19 | £720 / £733 | £628 / £653 |
+| Tesla M3 LR AWD (444mi, 4.2s) | 1,005.61 | £768 / £782 | £672 / £700 |
+
+### Verdict
+**The work scheme dominates the PCH market at his usage.** Same-car comparison: M3 RWD
+at work = £498-579 net all-in with REAL bundled insurance + no-penalty exit, vs the best
+PCH £579 with estimated self-arranged insurance and a locked 36-month term. The CLA 250+
+(480mi — the range car he originally wanted) costs £623-724 net, far under the PCH CLA
+(~£1,038+). All four beat his current scheme's net cost (£726-836). His "I don't think
+I'll get a better deal" is confirmed by data — recommended taking the scheme; choice is
+M3 RWD (max saving) vs CLA 250+ (range, under his £1,000-gross budget) vs M3 LR AWD
+(4.2s, at budget). Shortlist-tab cars (iX1, EX40, iX2, Seal Excellence) are quoted at
+45k-total (15k/yr) only — ask Arval for 60k quotes before comparing those.
+
+---
+
 ## Session — 2026-06-11 (fairness fix): "vs today" now uses the scheme's NET cost
 
 ### What was asked
