@@ -435,3 +435,211 @@ def test_presets_scale_with_hold_years():
     
     pess_5 = preset("pessimistic", hold_years=5.0)
     assert pess_5["exit"]["pct_retained"] == pytest.approx(0.32 - 0.17) # 0.15
+
+
+# ---------------------------------------------------------------------------
+# Market lease deals — upfront amortisation + normalisation
+# ---------------------------------------------------------------------------
+
+def test_initial_payment_amortises_into_lease_gross():
+    """A £9k upfront over a 3-yr hold adds £3k/yr to the lease gross, evenly."""
+    base = dict(monthly_cost=600, mileage_allowance=20_000, includes_insurance=True,
+                includes_service=True, includes_tyres=True, includes_eved=True,
+                lease_type="personal")
+    no_upfront = LeaseComparator(initial_payment=0, **base)
+    with_upfront = LeaseComparator(initial_payment=9_000, **base)
+    y0 = lease_year_costs(no_upfront, RunningCosts(), TaxParams(), 20_000, 3.0)
+    y1 = lease_year_costs(with_upfront, RunningCosts(), TaxParams(), 20_000, 3.0)
+    # Each full year carries 9000/3 = 3000 more gross than the no-upfront case.
+    for a, b in zip(y0, y1):
+        assert b.lease_payments - a.lease_payments == pytest.approx(3_000)
+    # Effective monthly rises by exactly 9000 / 36 = £250/mo.
+    assert (monthly_cost(y1, 3.0) - monthly_cost(y0, 3.0)) == pytest.approx(9_000 / 36)
+
+
+def test_initial_payment_defaults_zero_preserves_behaviour():
+    """Existing leases (no upfront field set) are unchanged."""
+    lease = LeaseComparator(monthly_cost=700, mileage_allowance=20_000,
+                            includes_insurance=True, includes_service=True,
+                            includes_ved=True, includes_eved=True,
+                            includes_tyres=True, lease_type="personal")
+    years = lease_year_costs(lease, RunningCosts(), TaxParams(), 20_000, 3.0)
+    assert monthly_cost(years, 3.0) == pytest.approx(700)
+
+
+def test_evaluate_market_deal_adds_insurance_maintenance_and_excess():
+    """A 5k-allowance PCH deal at 20k/yr picks up insurance, service, tyres and excess."""
+    from models import MarketDeal, evaluate_market_deal
+    running = RunningCosts(insurance_annual=950, service_annual=300,
+                           tyre_interval_miles=35_000, tyre_set_cost=950)
+    deal = MarketDeal(source="Carwow", monthly_cost=574, initial_payment=0,
+                      mileage_allowance=5_000, excess_pence_per_mile=10.0)
+    res = evaluate_market_deal(deal, running, TaxParams(),
+                               annual_miles=20_000, hold_years=3.0)
+    # Headline is the floor; all-in effective monthly must be higher.
+    assert res["effective_monthly"] > 574
+    # Insurance ≈ £950/yr → ~£79/mo.
+    assert res["insurance_mo"] == pytest.approx(950 / 12, rel=1e-3)
+    # Excess: 15k over allowance × 10p = £1,500/yr → £125/mo.
+    assert res["excess_mo"] == pytest.approx(1_500 / 12, rel=1e-3)
+    # Maintenance present (service + tyre wear at 20k/yr).
+    assert res["service_mo"] > 0 and res["tyres_mo"] > 0
+
+
+def test_evaluate_market_deal_amortises_upfront():
+    """Upfront flows into the effective monthly at exactly upfront / months."""
+    from models import MarketDeal, evaluate_market_deal
+    running = RunningCosts()
+    common = dict(source="X", monthly_cost=600, mileage_allowance=20_000)
+    no_up = evaluate_market_deal(MarketDeal(initial_payment=0, **common),
+                                 running, TaxParams(), 20_000, 3.0)
+    up = evaluate_market_deal(MarketDeal(initial_payment=5_400, **common),
+                              running, TaxParams(), 20_000, 3.0)
+    assert up["upfront_mo"] == pytest.approx(5_400 / 36)
+    assert (up["effective_monthly"] - no_up["effective_monthly"]) == pytest.approx(5_400 / 36)
+
+
+def test_evaluate_market_deal_toggles_off_extras():
+    """With insurance + maintenance off, only lease + upfront + excess remain."""
+    from models import MarketDeal, evaluate_market_deal
+    deal = MarketDeal(source="X", monthly_cost=600, mileage_allowance=20_000)
+    res = evaluate_market_deal(deal, RunningCosts(), TaxParams(), 20_000, 3.0,
+                               add_insurance=False, add_maintenance=False)
+    assert res["insurance_mo"] == 0
+    assert res["service_mo"] == 0 and res["tyres_mo"] == 0
+    # No upfront, no excess (allowance == usage) → effective equals headline.
+    assert res["effective_monthly"] == pytest.approx(600)
+
+
+def test_market_deal_shorter_term_amortises_over_its_own_term():
+    """A 24-month deal held 3 years is priced over its 24 months, not 36 —
+    upfront divides by 24 and no months are fabricated at the expired rate."""
+    from models import MarketDeal, evaluate_market_deal
+    common = dict(source="X", monthly_cost=500, mileage_allowance=20_000,
+                  term_months=24)
+    no_up = evaluate_market_deal(MarketDeal(initial_payment=0, **common),
+                                 RunningCosts(), TaxParams(), 20_000, 3.0,
+                                 add_insurance=False, add_maintenance=False)
+    up = evaluate_market_deal(MarketDeal(initial_payment=4_800, **common),
+                              RunningCosts(), TaxParams(), 20_000, 3.0,
+                              add_insurance=False, add_maintenance=False)
+    assert up["eval_months"] == pytest.approx(24)
+    assert up["upfront_mo"] == pytest.approx(4_800 / 24)
+    assert (up["effective_monthly"] - no_up["effective_monthly"]) == pytest.approx(4_800 / 24)
+    # Total covers only the deal's own life: 24 × £500 + upfront.
+    assert up["total"] == pytest.approx(24 * 500 + 4_800)
+
+
+def test_market_deal_upfront_amortises_exactly_on_fractional_hold():
+    """A 2.5-year hold must spread the upfront to exactly the upfront — the
+    partial year takes a pro-rated share (catches a dropped ×fraction)."""
+    from models import MarketDeal, evaluate_market_deal
+    common = dict(source="X", monthly_cost=600, mileage_allowance=20_000,
+                  term_months=36)
+    no_up = evaluate_market_deal(MarketDeal(initial_payment=0, **common),
+                                 RunningCosts(), TaxParams(), 20_000, 2.5,
+                                 add_insurance=False, add_maintenance=False)
+    up = evaluate_market_deal(MarketDeal(initial_payment=3_000, **common),
+                              RunningCosts(), TaxParams(), 20_000, 2.5,
+                              add_insurance=False, add_maintenance=False)
+    assert up["eval_months"] == pytest.approx(30)
+    assert (up["total"] - no_up["total"]) == pytest.approx(3_000)
+    assert (up["effective_monthly"] - no_up["effective_monthly"]) == pytest.approx(3_000 / 30)
+
+
+def test_market_deal_wiring_uses_non_default_excess_and_insurance():
+    """Deal excess rate and the user's insurance must actually be wired through —
+    values deliberately differ from the LeaseComparator field defaults."""
+    from models import MarketDeal, evaluate_market_deal
+    running = RunningCosts(insurance_annual=1_200)
+    deal = MarketDeal(source="NVC", monthly_cost=1_180.70,
+                      mileage_allowance=10_000, excess_pence_per_mile=16.8)
+    res = evaluate_market_deal(deal, running, TaxParams(),
+                               annual_miles=20_000, hold_years=3.0,
+                               add_insurance=True, add_maintenance=False)
+    # 10k over allowance × 16.8p = £1,680/yr → £140/mo (not £83.33 at 10p).
+    assert res["excess_mo"] == pytest.approx(1_680 / 12)
+    assert res["insurance_mo"] == pytest.approx(1_200 / 12)
+
+
+def test_market_deal_components_sum_to_effective_monthly():
+    """The UI columns must always sum: lease line (incl. upfront) + excess +
+    insurance + service + tyres == effective monthly."""
+    from models import MarketDeal, evaluate_market_deal
+    deal = MarketDeal(source="X", monthly_cost=826.12, initial_payment=249,
+                      mileage_allowance=15_000, excess_pence_per_mile=12.0)
+    res = evaluate_market_deal(deal, RunningCosts(), TaxParams(),
+                               annual_miles=20_000, hold_years=3.0)
+    assert res["lease_line_mo"] == pytest.approx(res["headline_monthly"] + res["upfront_mo"])
+    assert res["effective_monthly"] == pytest.approx(
+        res["lease_line_mo"] + res["excess_mo"] + res["insurance_mo"]
+        + res["service_mo"] + res["tyres_mo"])
+
+
+def test_market_deal_eved_flag_adds_per_mile_tax():
+    """include_eved=False bills the per-mile EV tax on top of the deal: 2 of the
+    3 hold years (Apr 2027–Apr 2030) fall after the Apr-2028 start at 3p/mile."""
+    from models import MarketDeal, evaluate_market_deal
+    deal = MarketDeal(source="X", monthly_cost=700, mileage_allowance=20_000)
+    kwargs = dict(annual_miles=20_000, hold_years=3.0,
+                  add_insurance=False, add_maintenance=False)
+    inc = evaluate_market_deal(deal, RunningCosts(), TaxParams(), **kwargs)
+    exc = evaluate_market_deal(deal, RunningCosts(), TaxParams(),
+                               include_eved=False, **kwargs)
+    expected = 20_000 * 0.03 * 2 / 36  # £1,200 over the hold → £33.33/mo
+    assert (exc["effective_monthly"] - inc["effective_monthly"]) == pytest.approx(expected)
+
+
+def test_market_deal_insurance_override_replaces_running_assumption():
+    """A per-deal insurance figure (M50/M60 insure higher) replaces the
+    RunningCosts baseline; None keeps the baseline."""
+    from models import MarketDeal, evaluate_market_deal
+    running = RunningCosts(insurance_annual=950)
+    kwargs = dict(annual_miles=20_000, hold_years=3.0)
+    base = evaluate_market_deal(
+        MarketDeal(source="X", monthly_cost=574, mileage_allowance=20_000),
+        running, TaxParams(), **kwargs)
+    overridden = evaluate_market_deal(
+        MarketDeal(source="X", monthly_cost=574, mileage_allowance=20_000,
+                   insurance_override=1_450),
+        running, TaxParams(), **kwargs)
+    assert base["insurance_mo"] == pytest.approx(950 / 12)
+    assert overridden["insurance_mo"] == pytest.approx(1_450 / 12)
+    assert (overridden["effective_monthly"] - base["effective_monthly"]) \
+        == pytest.approx((1_450 - 950) / 12)
+
+
+def test_jsonable_records_unwraps_numpy_and_nan():
+    """DataFrame records (numpy scalars, NaN blanks) become plain JSON-safe Python."""
+    import numpy as np
+    from models import jsonable_records
+    rows = jsonable_records([{
+        "Source": "Carwow", "Monthly £": np.float64(574.0),
+        "Miles/yr": np.int64(20_000), "Upfront £": float("nan"),
+        "Description": None,
+    }])
+    assert rows[0]["Monthly £"] == 574.0 and type(rows[0]["Monthly £"]) is float
+    assert rows[0]["Miles/yr"] == 20_000 and type(rows[0]["Miles/yr"]) is int
+    assert rows[0]["Upfront £"] is None        # NaN blanks must not reach json.dumps
+    assert rows[0]["Description"] is None
+
+
+def test_jsonable_records_survives_json_round_trip():
+    """The cleaned rows must round-trip json.dumps → json.loads unchanged."""
+    import json
+    import numpy as np
+    from models import jsonable_records
+    clean = jsonable_records([{
+        "Source": "Nationwide VC", "Monthly £": np.float64(615),
+        "Term (mo)": np.int64(36), "Excess p/mi": np.float64(10.0),
+        "Upfront £": np.float64("nan"),
+    }])
+    assert json.loads(json.dumps(clean)) == clean
+
+
+def test_jsonable_records_passthrough_and_exotic_fallback():
+    """Plain Python passes through untouched; exotic cell types fall back to str."""
+    from models import jsonable_records
+    plain = [{"Source": "(your quote)", "Monthly £": 700.0, "ok": True}]
+    assert jsonable_records(plain) == plain
+    assert jsonable_records([{"d": date(2026, 6, 10)}]) == [{"d": "2026-06-10"}]

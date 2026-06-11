@@ -7,6 +7,7 @@ mid-range so the user can tighten them with their own data.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date
 from typing import Literal
@@ -127,6 +128,11 @@ class LeaseComparator(BaseModel):
       - company_car: employer pays the lease; employee only sees BiK
     """
     monthly_cost: float = Field(1_000, ge=0)
+    # Upfront "initial rental" on a PCH deal, in £ (e.g. 9 × monthly). Amortised
+    # evenly across the hold period in lease_year_costs so deals with different
+    # upfront structures compare on a like-for-like effective monthly. The user
+    # prefers £0 upfront; this defaults to 0 so existing behaviour is unchanged.
+    initial_payment: float = Field(0, ge=0)
     mileage_allowance: int = Field(20_000, ge=0)
     excess_pence_per_mile: float = Field(10.0, ge=0)
     includes_service: bool = True
@@ -147,6 +153,27 @@ class LeaseComparator(BaseModel):
     p11d_value: float = Field(66_124, ge=0)
 
 
+class MarketDeal(BaseModel):
+    """A real personal-lease quote sourced from a comparison site (LeaseLoco,
+    Carwow, broker, …) to be normalised against the same running costs as the
+    buy-out and the user's own lease.
+
+    Only the contract terms live here; insurance / service / tyre costs are
+    pulled from RunningCosts at evaluation time, because the user wants those
+    added on top of every PCH quote (PCH deals don't bundle them).
+    """
+    source: str = "?"
+    label: str = "i4 eDrive40 M Sport"
+    monthly_cost: float = Field(ge=0)
+    initial_payment: float = Field(0, ge=0)          # £ upfront (initial rental)
+    mileage_allowance: int = Field(10_000, ge=0)     # contract miles/yr
+    term_months: int = Field(36, gt=0)               # evaluation cut at min(term, hold)
+    excess_pence_per_mile: float = Field(10.0, ge=0)
+    # Per-deal insurance £/yr; None = use RunningCosts. Performance variants
+    # (M50/M60) insure well above the eDrive40 baseline assumption.
+    insurance_override: float | None = Field(None, ge=0)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -157,6 +184,28 @@ def add_years(d: date, years: int) -> date:
         return date(d.year + years, d.month, d.day)
     except ValueError:
         return date(d.year + years, 2, 28)
+
+
+def jsonable_records(records: list[dict]) -> list[dict]:
+    """Coerce DataFrame ``.to_dict("records")`` rows to JSON-safe plain Python.
+
+    pandas hands back numpy scalars (which ``json.dumps`` rejects) and ``NaN``
+    for blank cells. Unwrap to native int/float/str/bool and map NaN to None so
+    a row set survives a JSON round-trip and can reseed a data editor.
+    """
+    out: list[dict] = []
+    for rec in records:
+        row: dict = {}
+        for k, v in rec.items():
+            if hasattr(v, "item"):  # numpy scalar -> native Python equivalent
+                v = v.item()
+            if isinstance(v, float) and math.isnan(v):
+                v = None
+            elif not isinstance(v, (str, int, float, bool, type(None))):
+                v = str(v)  # any exotic cell type must not break json.dumps
+            row[k] = v
+        out.append(row)
+    return out
 
 
 def suggest_exit_pct(hold_years: float) -> float:
@@ -373,8 +422,11 @@ def lease_year_costs(
                     else (annual_miles * fraction
                           * (tax.per_mile_tax_rate_pence / 100.0) * eved_share))
 
-        # Tax treatment of the lease cost
-        gross_annual = lease.monthly_cost * 12 * fraction
+        # Tax treatment of the lease cost. The upfront initial rental is spread
+        # evenly across the hold so it lands in the same gross the relief/BiK
+        # maths and the per-month headline are built from.
+        initial_amort = lease.initial_payment / hold_years * fraction
+        gross_annual = lease.monthly_cost * 12 * fraction + initial_amort
 
         if lease.lease_type == "salary_sacrifice":
             tax_savings = -gross_annual * MARGINAL_RELIEF[lease.tax_band]
@@ -470,6 +522,84 @@ def breakeven_buyout(
         else:
             hi = mid
     return (lo + hi) / 2
+
+
+# ---------------------------------------------------------------------------
+# Market lease deals (LeaseLoco / Carwow / brokers)
+# ---------------------------------------------------------------------------
+
+def evaluate_market_deal(
+    deal: MarketDeal,
+    running: RunningCosts,
+    tax: TaxParams,
+    annual_miles: int,
+    hold_years: float,
+    add_insurance: bool = True,
+    add_maintenance: bool = True,
+    include_eved: bool = True,
+    start: date = LEASE_END_DATE,
+) -> dict:
+    """Normalise a market PCH quote to an effective £/mo.
+
+    These are *personal* leases, so there's no BiK / salary-sacrifice relief.
+    Road tax (VED) is bundled for the term. Whether the per-mile EV tax lands
+    on the driver or the leasing company is genuinely unsettled, so
+    include_eved keeps it a UI choice rather than a hard-coded assumption
+    (default True = leasing co pays, matching the own-lease default).
+    Insurance, service and tyres fall on the driver — added from RunningCosts
+    when the flags are set, since PCH deals don't bundle them.
+
+    The deal is costed over min(term, hold): a deal shorter than the hold is
+    priced per-month over its own life (the months after it ends are unknown —
+    re-quote risk, which the UI flags), and a deal longer than the hold is cut
+    at the hold end with its full upfront still counted (early-termination
+    charges are not modelled). The upfront initial rental is amortised across
+    that evaluation window by lease_year_costs.
+
+    Returns the headline terms plus a per-month component breakdown so the UI can
+    show exactly what the effective monthly is made of.
+    """
+    eval_years = min(hold_years, deal.term_months / 12.0)
+    lease = LeaseComparator(
+        monthly_cost=deal.monthly_cost,
+        initial_payment=deal.initial_payment,
+        mileage_allowance=deal.mileage_allowance,
+        excess_pence_per_mile=deal.excess_pence_per_mile,
+        includes_service=not add_maintenance,
+        includes_tyres=not add_maintenance,
+        includes_insurance=not add_insurance,
+        includes_ved=True,     # PCH bundles road tax for the term
+        includes_eved=include_eved,
+        insurance_annual=(running.insurance_annual
+                          if deal.insurance_override is None
+                          else deal.insurance_override),
+        lease_type="personal",
+    )
+    years = lease_year_costs(lease, running, tax, annual_miles, eval_years, start)
+    months = eval_years * 12
+
+    def per_mo(attr: str) -> float:
+        return sum(getattr(y, attr) for y in years) / months
+
+    total = total_cost(years)
+    return {
+        "source": deal.source,
+        "label": deal.label,
+        "headline_monthly": deal.monthly_cost,
+        "initial_payment": deal.initial_payment,
+        "mileage_allowance": deal.mileage_allowance,
+        "term_months": deal.term_months,
+        "eval_months": months,
+        "effective_monthly": total / months,
+        "total": total,
+        # Per-month component split (lease line already includes amortised upfront)
+        "lease_line_mo": per_mo("lease_payments"),
+        "upfront_mo": deal.initial_payment / months,
+        "excess_mo": per_mo("excess_mileage"),
+        "insurance_mo": per_mo("insurance"),
+        "service_mo": per_mo("service"),
+        "tyres_mo": per_mo("tyres"),
+    }
 
 
 # ---------------------------------------------------------------------------

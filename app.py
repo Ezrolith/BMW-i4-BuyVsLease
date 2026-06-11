@@ -22,11 +22,14 @@ from models import (
     LEASE_END_DATE,
     LIST_PRICE_GBP,
     MARGINAL_RELIEF,
+    MarketDeal,
+    jsonable_records,
     PurchaseInputs,
     RunningCosts,
     TaxParams,
     bik_rate_for_tax_year,
     breakeven_buyout,
+    evaluate_market_deal,
     evaluate_preset,
     lease_year_costs,
     monthly_cost,
@@ -74,7 +77,99 @@ RESEARCH_MD = """
 
 # Bump when default values change in a way that should overwrite existing sessions.
 # Old sessions with a lower version (or none) get a one-time wipe-and-reseed.
-_STATE_VERSION = 5
+_STATE_VERSION = 9
+
+
+# EXACT personal PCH quotes captured 10 June 2026 at the target config —
+# 36 months / 20,000 miles/yr / 1-month initial — via each site's own pricing
+# API or server-rendered listing (not "from" headlines). Notes:
+# - Upfront convention: an N-month-initial profile costs (N-1) extra monthlies
+#   on top of a flat monthly term, so a 1+35 profile adds NOTHING upfront —
+#   the "Upfront £" cell holds only one-off admin/doc fees. For a 9-months-
+#   initial quote, enter 8 × monthly + fees.
+# - The 2026 i4 range is eDrive35 / eDrive40 / M60; the M50 is discontinued
+#   (M60 replaced it). The £574 M50 row is a USED 2023 stock car (55k miles).
+# - Excess p/mi is rarely published; 10p is the default guess, and it's inert
+#   while the allowance matches the 20k/yr usage anyway. Nationwide publishes
+#   16.8p on the M60 pack variants.
+# - Carwow prices come from Arval ratebooks expiring 30 Jun 2026 — re-quote
+#   after that. Every row is editable; paste fresh configurator quotes in.
+SEED_MARKET_DEALS = [
+    # LeaseLoco (supplier Vehicle Flex, factory order, +£249 doc fee) — the
+    # cheapest exact-config source found, including a like-for-like eDrive40
+    # M Sport (the user's current car, new shape).
+    {"Source": "LeaseLoco", "Description": "i4 eDrive40 M Sport new — exact 36mo/20k/1+35 (£249 fee)",
+     "Monthly £": 826.12, "Upfront £": 249.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": None},
+    {"Source": "LeaseLoco", "Description": "i4 eDrive40 Sport new — exact 36mo/20k/1+35 (£249 fee)",
+     "Monthly £": 816.18, "Upfront £": 249.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": None},
+    {"Source": "LeaseLoco", "Description": "i4 eDrive35 Sport new — exact 36mo/20k/1+35 (£249 fee) — range floor",
+     "Monthly £": 786.17, "Upfront £": 249.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": None},
+    # Used-lease stock car (MW23 EKN, vehicle id 7395) — by far the cheapest i4
+    # at the target terms. Details confirmed on the quote page 11 Jun 2026:
+    # £574/mo at exactly 36/20k/1+35, £357 processing fee, excess 6p +VAT
+    # (=7.2p inc VAT, stepping to 10.8p beyond 5k excess miles). Caveats: BMW
+    # 3-yr warranty likely expired (battery warranty to ~2031); optional used
+    # maintenance package is a steep £209/mo. Insurance override: M50 is ABI
+    # group 44 vs eDrive40's 38 → ~£1,140/yr for this profile (estimate).
+    {"Source": "Nationwide VC", "Description": "USED 2023 i4 M50, 55k mi — exact 36mo/20k/1+35 (£357 fee)",
+     "Monthly £": 574.0, "Upfront £": 357.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 7.2, "Ins £/yr": 1_140.0},
+    # Carwow Leasey API (funder Arval, +£295 admin fee).
+    {"Source": "Carwow", "Description": "i4 eDrive40 Sport new — exact 36mo/20k/1+35 (£295 fee)",
+     "Monthly £": 989.43, "Upfront £": 295.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": None},
+    {"Source": "Carwow", "Description": "i4 eDrive40 M Sport new — exact 36mo/20k/1+35 (£295 fee)",
+     "Monthly £": 1001.34, "Upfront £": 295.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": None},
+    # New-shape M60 rows for completeness. ABI group 45 (vs eDrive40's 38) →
+    # insurance override ~£1,200/yr for this profile (estimate; thin claims
+    # history on the 2026 M60 means wide quote dispersion).
+    {"Source": "Nationwide VC", "Description": "i4 M60 Tech/Pro new — exact 36mo/20k/1+35 (£357 fee)",
+     "Monthly £": 1180.70, "Upfront £": 357.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 16.8, "Ins £/yr": 1_200.0},
+    {"Source": "Select", "Description": "i4 M60 new — exact 36mo/20k/1+35 (fee not shown)",
+     "Monthly £": 1207.86, "Upfront £": 0.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": 1_200.0},
+    # --- Rival EVs (user is money-first, not BMW-loyal) -------------------
+    # New electric Mercedes CLA "with EQ Technology" (MMA platform, 2026):
+    # CLA 250+ 85kWh does 484 mi WLTP (vs ~365 for the i4 eDrive40), OTR from
+    # ~£43k. So new (11 Jun 2026) that 36mo/20k personal pricing isn't
+    # published anywhere yet — NVC says "coming soon", LeaseLoco has no EV CLA
+    # inventory, Select/FVL quote-gate it. Seeds below are the best PUBLISHED
+    # bases; both are 48mo/5k, so the term-cut warning and excess-mileage
+    # normalisation apply. Paste a real 36/20k quote when brokers list one.
+    # Insurance: ABI group 41-42 (Parkers) vs i4 eDrive40's 38 → ~£1,050/yr
+    # estimate for this profile. DriveElectric initial was 9 months → upfront
+    # = 8 × monthly (extra over flat profile); arrangement fee not published.
+    {"Source": "DriveElectric", "Description": "Mercedes CLA 250+ Sport EQ (484mi) — exact 48mo/5k/9mo init",
+     "Monthly £": 657.93, "Upfront £": 5_263.44, "Miles/yr": 5_000,
+     "Term (mo)": 48, "Excess p/mi": 10.0, "Ins £/yr": 1_050.0},
+    # e-car lease publishes business ex-VAT only; personal est = ×1.2 VAT.
+    {"Source": "e-car lease", "Description": "Mercedes CLA 250+ Sport EQ — 48mo/5k/9mo init (est: bus.+VAT)",
+     "Monthly £": 618.32, "Upfront £": 4_946.59, "Miles/yr": 5_000,
+     "Term (mo)": 48, "Excess p/mi": 10.0, "Ins £/yr": 1_050.0},
+]
+
+
+# Session-state keys that round-trip through the scenario JSON download/upload.
+# Module-level because two places need it: the download snapshot and the
+# staged-scenario apply step that runs before any widget is instantiated.
+EXPORT_KEYS = [
+    "buyout_price", "hold_years", "annual_miles", "cost_of_capital_pct",
+    "insurance_annual", "service_annual", "tyre_interval_miles", "tyre_set_cost",
+    "other_maintenance_annual", "battery_reserve_annual",
+    "ved_standard", "ecs_annual",
+    "per_mile_tax_enabled", "per_mile_tax_rate_pence", "per_mile_tax_start",
+    "exit_method", "pct_retained", "absolute_value",
+    "lease_monthly_cost", "lease_mileage_allowance", "lease_excess_pence",
+    "lease_includes_service", "lease_includes_ved", "lease_includes_insurance",
+    "lease_includes_eved", "lease_includes_tyres", "lease_insurance_annual",
+    "lease_type", "tax_band", "p11d_value",
+    "market_add_insurance", "market_add_maintenance", "market_includes_eved",
+]
 
 
 def _init_state():
@@ -130,6 +225,16 @@ def _init_state():
         "lease_type": "salary_sacrifice",
         "tax_band": "basic",
         "p11d_value": LIST_PRICE_GBP,
+        # Market-deals table base rows (list of dicts, JSON-safe). The data
+        # editor renders these and keeps its own edits in widget state; this
+        # key only changes when a scenario JSON is loaded, at which point
+        # market_deals_nonce is bumped to remount the editor (Streamlit
+        # forbids writing data-editor widget state directly).
+        "market_deals": [dict(r) for r in SEED_MARKET_DEALS],
+        "market_deals_nonce": 0,
+        "market_add_insurance": True,
+        "market_add_maintenance": True,
+        "market_includes_eved": True,
         "initialised": True,
     }
     for key, value in defaults.items():
@@ -155,6 +260,29 @@ def _apply_preset(name: str):
 
 
 _init_state()
+
+# Apply a scenario staged by the uploader on the previous run. This must run
+# before ANY widget is instantiated: Streamlit raises if a widget's session key
+# is written after the widget exists, so the uploader (rendered at the bottom
+# of the page) only stages the parsed dict and reruns. The dict was validated
+# and coerced at stage time — this step just writes it.
+_pending = st.session_state.pop("_pending_scenario", None)
+if _pending is not None:
+    md = _pending.pop("market_deals", None)
+    if md is not None:
+        st.session_state["market_deals"] = md
+        # Remount the data editor with a fresh key so stale widget-state edits
+        # don't overlay the loaded rows (editor state can't be written directly).
+        st.session_state["market_deals_nonce"] += 1
+    for k, v in _pending.items():
+        if k in EXPORT_KEYS:
+            st.session_state[k] = v
+    # Backwards-compat: older saves stored pct_retained as a fraction (0-1).
+    # Only rescale a genuine fraction (0 < v <= 1); 1 (=1%) is left untouched.
+    pr = st.session_state.get("pct_retained", 50)
+    if 0 < pr <= 1:
+        st.session_state.pct_retained = pr * 100
+    st.session_state["_scenario_loaded"] = True
 
 # Migration: pct_retained used to be a fraction (0-1); now stored as a percent (0-100).
 # A stale session value < 1.5 is treated as the old format and rescaled — but only
@@ -583,6 +711,227 @@ st.divider()
 
 
 # ---------------------------------------------------------------------------
+# Market lease deals (LeaseLoco / Carwow / brokers)
+# ---------------------------------------------------------------------------
+
+st.subheader("Market lease deals — i4 & rival EVs (LeaseLoco / Carwow / brokers)")
+st.caption(
+    "Personal PCH quotes, normalised the same way as everything else so they're "
+    "apples-to-apples: any **upfront is amortised** across min(term, hold), "
+    "**insurance + maintenance (service + tyres) are added** (PCH deals don't "
+    f"bundle them), and your **{purchase.annual_miles:,}/yr** usage charges excess "
+    "mileage on any deal with a lower allowance. **i4 rows are exact quotes (10 Jun "
+    "2026) at the target config — 36 mo / 20k miles / 1-month initial.** The "
+    "**Mercedes CLA 250+ EQ rows (484 mi WLTP vs ~365 for the eDrive40)** are the "
+    "best published bases — the EV CLA is too new for brokers to list 36/20k "
+    "personal prices, so they're 48 mo/5k-mile quotes the normalisation penalises "
+    "accordingly; paste a real quote when listed. Upfront cells hold the extra over "
+    "a flat profile + one-off fees ((N−1)×monthly for N-months-initial; 1+35 = fees "
+    "only). The 2026 i4 range is eDrive35/40/M60 (M50 discontinued — the £574 row "
+    "is a used 2023 stock car). 'Ins £/yr' overrides your insurance per row "
+    "(M50/M60 group 44-45, CLA group 41, vs eDrive40's 38). Carwow rates expire "
+    "30 Jun 2026. Edit any cell, or use ＋ to add quotes. Sources: "
+    "[LeaseLoco](https://www.leaseloco.com/car-leasing/bmw/i4) · "
+    "[Carwow](https://www.carwow.co.uk/leasey/cars/bmw/i4) · "
+    "[Nationwide VC](https://www.nationwidevehiclecontracts.co.uk/car-leasing/bmw/i4) · "
+    "[Select](https://www.selectcarleasing.co.uk/car-leasing/bmw/i4/gran-coupe) · "
+    "[DriveElectric](https://www.drive-electric.co.uk/electric-car-leasing/mercedes-benz/cla-electric/) · "
+    "[e-car lease](https://www.electriccarlease.co.uk/electric-car-leasing/mercedes-benz/cla)."
+)
+
+mc1, mc2, mc3 = st.columns(3)
+add_market_insurance = mc1.checkbox(
+    "Add insurance to each deal", key="market_add_insurance",
+    help=f"Adds your insurance assumption (£{running.insurance_annual:,.0f}/yr) — "
+         "PCH deals don't include it")
+add_market_maint = mc2.checkbox(
+    "Add maintenance (service + tyres)", key="market_add_maintenance",
+    help="Adds service + tyre wear at your running-cost assumptions — PCH deals "
+         "rarely bundle a maintenance package")
+market_includes_eved = mc3.checkbox(
+    "Deals include per-mile EV tax?", key="market_includes_eved",
+    help="Whether the Apr-2028 per-mile EV tax lands on the leasing co (ticked) "
+         "or on you on top of each deal (unticked). Mirror your own-lease "
+         "'Includes eVED?' setting to keep the comparison symmetric")
+
+# Base rows come from session state (seed, or a loaded scenario). An empty list
+# still needs the column headers, else the editor renders with no columns.
+_deal_rows = st.session_state["market_deals"]
+deals_df = st.data_editor(
+    pd.DataFrame(_deal_rows) if _deal_rows else pd.DataFrame(SEED_MARKET_DEALS).iloc[0:0],
+    num_rows="dynamic",
+    key=f"market_deals_editor_{st.session_state['market_deals_nonce']}",
+    use_container_width=True,
+    hide_index=True,
+    column_config={
+        "Source": st.column_config.TextColumn("Source"),
+        "Description": st.column_config.TextColumn("Description", width="large"),
+        "Monthly £": st.column_config.NumberColumn("Monthly £", min_value=0.0,
+                                                   step=10.0, format="£%.0f"),
+        "Upfront £": st.column_config.NumberColumn("Upfront £", min_value=0.0,
+                                                   step=100.0, format="£%.0f",
+                                                   help="Extra paid upfront beyond a flat monthly profile, "
+                                                        "plus one-off fees. An N-months-initial quote = "
+                                                        "(N−1) × monthly + fees; a 1+35 profile = fees only"),
+        "Miles/yr": st.column_config.NumberColumn("Miles/yr", min_value=0, step=1_000),
+        "Term (mo)": st.column_config.NumberColumn("Term (mo)", min_value=1, step=6),
+        "Excess p/mi": st.column_config.NumberColumn("Excess p/mi", min_value=0.0,
+                                                     step=0.5, format="%.1f"),
+        "Ins £/yr": st.column_config.NumberColumn(
+            "Ins £/yr", min_value=0.0, step=50.0, format="£%.0f",
+            help="Optional per-deal insurance override (£/yr). Blank = your "
+                 f"running-cost assumption (£{running.insurance_annual:,.0f}). "
+                 "Use for M50/M60, which insure above the eDrive40 baseline"),
+    },
+)
+
+
+def _num(v, default: float = 0.0) -> float:
+    """Coerce a possibly-NaN/None data-editor cell to a float, else the default.
+
+    Non-finite values (inf from a hand-edited JSON — json.loads accepts the
+    Infinity token) also fall back to the default: downstream int() would raise.
+    """
+    try:
+        if v is None:
+            return default
+        f = float(v)
+        return default if not math.isfinite(f) else f
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_deal_rows(rows: list[dict]) -> list[dict]:
+    """Whitelist-coerce deal rows loaded from a scenario JSON.
+
+    A hand-edited file can otherwise brick the session: a uniformly wrong-typed
+    column (e.g. numeric "Source") makes st.data_editor raise on every rerun,
+    and negative / Infinity numbers crash MarketDeal's ge=0 validation below
+    the editor — in both cases above the uploader, with no in-app recovery.
+    Blank cells stay None so the editor shows them empty and the evaluation
+    defaults apply.
+    """
+    def _cell(v, lo: float = 0.0):
+        if v is None:
+            return None
+        f = _num(v, float("nan"))
+        return None if math.isnan(f) else max(lo, f)
+
+    return [{
+        "Source": None if r.get("Source") is None else str(r["Source"]),
+        "Description": None if r.get("Description") is None else str(r["Description"]),
+        "Monthly £": _cell(r.get("Monthly £")),
+        "Upfront £": _cell(r.get("Upfront £")),
+        "Miles/yr": _cell(r.get("Miles/yr")),
+        "Term (mo)": _cell(r.get("Term (mo)"), lo=1.0),
+        "Excess p/mi": _cell(r.get("Excess p/mi")),
+        "Ins £/yr": _cell(r.get("Ins £/yr")),
+    } for r in rows]
+
+
+# JSON-safe snapshot of the table as edited (base rows + widget-state edits).
+# The Save/load section exports this, so a deal set round-trips with the scenario.
+market_records = jsonable_records(deals_df.to_dict("records"))
+
+market_results = []
+for row in market_records:
+    monthly = _num(row.get("Monthly £"), 0.0)
+    if monthly <= 0:
+        continue  # skip blank / placeholder rows with no price
+    deal = MarketDeal(
+        source=str(row.get("Source") or "?"),
+        label=str(row.get("Description") or ""),
+        monthly_cost=monthly,
+        # max() guards: MarketDeal validates ge=0, and loaded base rows bypass
+        # the editor's min_value (UI-only). A blank allowance defaults to the
+        # user's own usage — 0 would bill every mile as phantom excess.
+        initial_payment=max(0.0, _num(row.get("Upfront £"), 0.0)),
+        mileage_allowance=max(0, int(_num(row.get("Miles/yr"), purchase.annual_miles))),
+        term_months=max(1, int(_num(row.get("Term (mo)"), 36))),
+        excess_pence_per_mile=max(0.0, _num(row.get("Excess p/mi"), 10.0)),
+        insurance_override=(None if math.isnan(ins_cell := _num(row.get("Ins £/yr"), float("nan")))
+                            else max(0.0, ins_cell)),
+    )
+    market_results.append(evaluate_market_deal(
+        deal, running, tax,
+        annual_miles=purchase.annual_miles, hold_years=purchase.hold_years,
+        add_insurance=add_market_insurance, add_maintenance=add_market_maint,
+        include_eved=market_includes_eved,
+    ))
+
+if not market_results:
+    st.info("Add at least one deal with a monthly price above £0 to see the comparison.")
+else:
+    market_results.sort(key=lambda r: r["effective_monthly"])
+    table_rows = [{
+        "Source": r["source"],
+        "Deal": r["label"],
+        "Headline £/mo": f"£{r['headline_monthly']:,.0f}",
+        "Upfront £": f"£{r['initial_payment']:,.0f}",
+        "Term (mo)": f"{r['term_months']}",
+        "Miles/yr": f"{r['mileage_allowance']:,}",
+        "+Upfront/mo": f"£{r['upfront_mo']:,.0f}",
+        "+Excess/mo": f"£{r['excess_mo']:,.0f}",
+        "+Ins/mo": f"£{r['insurance_mo']:,.0f}",
+        "+Maint/mo": f"£{r['service_mo'] + r['tyres_mo']:,.0f}",
+        "Effective £/mo": f"£{r['effective_monthly']:,.0f}",
+        "vs your lease": f"£{r['effective_monthly'] - lease_mo:+,.0f}",
+        "vs buy": f"£{r['effective_monthly'] - own_mo:+,.0f}",
+        "vs today": f"£{r['effective_monthly'] - CURRENT_LEASE_MONTHLY:+,.0f}",
+    } for r in market_results]
+    st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
+    st.caption("Effective £/mo = headline + amortised upfront + excess mileage + "
+               "insurance + maintenance, costed over min(term, hold). **vs** columns: "
+               "negative = the deal is cheaper than that option. Today = "
+               f"£{CURRENT_LEASE_MONTHLY:,.0f}/mo.")
+
+    hold_months = round(purchase.hold_years * 12)
+    mismatched = [r for r in market_results if r["term_months"] != hold_months]
+    if mismatched:
+        st.warning(
+            f"{len(mismatched)} deal(s) have a term ≠ your {hold_months}-month hold. "
+            "Shorter deals are priced over their own term — what replaces them "
+            "afterwards is re-quote risk. Longer deals are cut at the hold end with "
+            "the full upfront counted; early-termination charges aren't modelled."
+        )
+
+    # Cheapest-deal verdict, anchored to buying and to today.
+    best = market_results[0]
+    eff = best["effective_monthly"]
+    vs_buy = eff - own_mo
+    vs_today = CURRENT_LEASE_MONTHLY - eff
+    msg = (f"**Cheapest market deal: {best['source']} — {best['label']} at an "
+           f"effective £{eff:,.0f}/mo** (£{best['headline_monthly']:,.0f} headline, "
+           f"all-in once upfront, excess miles, insurance and maintenance are added). ")
+    if vs_buy < 0:
+        msg += f"That **beats buying the car out** by £{-vs_buy:,.0f}/mo. "
+    else:
+        msg += f"Buying out is still £{vs_buy:,.0f}/mo cheaper than even this deal. "
+    msg += (f"It's £{abs(vs_today):,.0f}/mo {'less' if vs_today >= 0 else 'more'} "
+            f"than the £{CURRENT_LEASE_MONTHLY:,.0f}/mo you pay today.")
+    (st.success if vs_buy < 0 else st.info)(msg)
+
+    # Bar chart: every deal's all-in effective monthly vs buy and your own lease.
+    bar_names = [f"{r['source']}: {r['label'][:24]}" for r in market_results]
+    bar_vals = [r["effective_monthly"] for r in market_results]
+    bar_colours = ["#1f77b4"] * len(market_results)
+    bar_names += ["▶ Buy out", "▶ Your configured lease"]
+    bar_vals += [own_mo, lease_mo]
+    bar_colours += ["#2ca02c", "#ff7f0e"]
+    fig_m = go.Figure(go.Bar(
+        x=bar_vals, y=bar_names, orientation="h", marker_color=bar_colours,
+        text=[f"£{v:,.0f}" for v in bar_vals], textposition="auto",
+    ))
+    fig_m.update_layout(height=max(300, 55 * len(bar_names)),
+                        xaxis_title="Effective £/mo (all-in)",
+                        yaxis=dict(autorange="reversed"),
+                        title="All-in effective monthly — cheapest at top")
+    st.plotly_chart(fig_m, use_container_width=True)
+
+st.divider()
+
+
+# ---------------------------------------------------------------------------
 # Charts
 # ---------------------------------------------------------------------------
 
@@ -754,21 +1103,12 @@ st.subheader("Save / load scenario")
 c1, c2 = st.columns(2)
 
 with c1:
-    EXPORT_KEYS = [
-        "buyout_price", "hold_years", "annual_miles", "cost_of_capital_pct",
-        "insurance_annual", "service_annual", "tyre_interval_miles", "tyre_set_cost",
-        "other_maintenance_annual", "battery_reserve_annual",
-        "ved_standard", "ecs_annual",
-        "per_mile_tax_enabled", "per_mile_tax_rate_pence", "per_mile_tax_start",
-        "exit_method", "pct_retained", "absolute_value",
-        "lease_monthly_cost", "lease_mileage_allowance", "lease_excess_pence",
-        "lease_includes_service", "lease_includes_ved", "lease_includes_insurance",
-        "lease_includes_eved", "lease_includes_tyres", "lease_insurance_annual",
-        "lease_type", "tax_band", "p11d_value",
-    ]
     snapshot = {k: st.session_state[k] for k in EXPORT_KEYS}
     # Dates aren't JSON-serialisable by default — coerce.
     snapshot = {k: (v.isoformat() if isinstance(v, date) else v) for k, v in snapshot.items()}
+    # The deals table is exported as edited (not the widget key, which Streamlit
+    # owns) — market_records was sanitised right after the data editor above.
+    snapshot["market_deals"] = market_records
     st.download_button("Download scenario as JSON",
                        data=json.dumps(snapshot, indent=2),
                        file_name="bmw_i4_scenario.json",
@@ -776,23 +1116,28 @@ with c1:
 
 with c2:
     uploaded = st.file_uploader("Upload scenario JSON", type=["json"])
-    if uploaded is not None:
+    if st.session_state.pop("_scenario_loaded", False):
+        st.success("Scenario loaded.")
+    # Guard on file_id: the uploader keeps returning the file on every rerun
+    # until the user removes it, and reprocessing each run would re-bump the
+    # editor nonce (discarding post-load table edits) and rerun forever.
+    if uploaded is not None and st.session_state.get("_loaded_file_id") != uploaded.file_id:
         try:
             data = json.loads(uploaded.read().decode("utf-8"))
             # Coerce date strings back
             for k in ("per_mile_tax_start",):
                 if k in data and isinstance(data[k], str):
                     data[k] = date.fromisoformat(data[k])
-            for k, v in data.items():
-                if k in EXPORT_KEYS:
-                    st.session_state[k] = v
-            # Backwards-compat: older saves stored pct_retained as a fraction (0-1).
-            # Only rescale a genuine fraction (0 < v <= 1); a small percent like 1 (=1%)
-            # is left untouched.
-            pr = st.session_state.get("pct_retained", 50)
-            if 0 < pr <= 1:
-                st.session_state.pct_retained = pr * 100
-            st.success("Scenario loaded — rerun pending.")
+            md = data.get("market_deals")
+            if md is not None:
+                if not (isinstance(md, list) and all(isinstance(r, dict) for r in md)):
+                    raise ValueError("market_deals must be a list of row objects")
+                data["market_deals"] = _coerce_deal_rows(md)
+            # Widget session keys can't be written here — the widgets already
+            # exist this run. Stage the validated dict; it's applied at the top
+            # of the next run, before any widget is instantiated.
+            st.session_state["_pending_scenario"] = data
+            st.session_state["_loaded_file_id"] = uploaded.file_id
             st.rerun()
         except Exception as e:
             st.error(f"Couldn't load: {e}")
