@@ -5,6 +5,33 @@ Rolling notes to pick up work between sessions. Newest entry first.
 
 ---
 
+## Session — 2026-06-11 (fast variants): sub-4.5s Model 3 / Seal hunt
+
+### What was asked
+Peter: dig for Tesla Model 3 and BYD Seal **variants with 0-60 under 4.5s only** — best deal.
+
+### Qualifying variants (0-60 verified per variant, Parkers/EV Database; Tesla quotes 0-60, BYD 0-62)
+2026 lineup naming: Tesla renamed Long Range trims to "Premium" in Feb 2026; 85kWh pack
+since late 2025. Qualifiers: **M3 Premium LR AWD 4.2s** (group 40), **M3 Performance
+2.9s** (group 48), **BYD Seal Excellence AWD 390kW 3.8s 0-62** (group 48). Rejected for
+speed: M3 RWD / Premium LR RWD (4.9s), Seal Design RWD (5.7s).
+
+### Deals found (exact 36/20k/1+35, inc VAT — sweep re-audited the LeaseLoco ×1.2 rule, all clean)
+| Deal | Headline | All-in |
+|---|---|---|
+| **USED 2021 M3 LR AWD, 35,699 mi, NVC (1 unit, LB71 UJV)** | £285.45 | **£476** |
+| BYD Seal Excellence AWD, LeaseLoco/Autotrader (£0 fee, stock) | £522.30 | £703 |
+| BYD Seal Excellence AWD pre-reg, NVC (21.6p excess!) | £521.87 | £713 |
+| M3 Premium LR AWD new (444mi), LeaseLoco (£0 fee, factory order) | £809.65 | £965 |
+| M3 Performance new (2.9s), FVL | £1,131.82 | £1,322 |
+
+Caveats: group-48 insurance figures are estimates and Tesla/BYD real quotes often exceed
+group-implied; used car's excess unpublished; M3 Performance tyre habit ~£900-1,000/yr at
+20k mi/yr is NOT in the app's i4-calibrated maintenance add-on; Seal DC ceiling 150kW vs
+Tesla 250kW + Supercharger access. 5 rows added to seeds (0-60 in labels), state v11.
+
+---
+
 ## Session — 2026-06-11 (later): EV field expansion + critical VAT correction
 
 ### What was asked

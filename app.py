@@ -77,7 +77,7 @@ RESEARCH_MD = """
 
 # Bump when default values change in a way that should overwrite existing sessions.
 # Old sessions with a lower version (or none) get a one-time wipe-and-reseed.
-_STATE_VERSION = 10
+_STATE_VERSION = 11
 
 
 # EXACT personal PCH quotes captured 10 June 2026 at the target config —
@@ -178,6 +178,31 @@ SEED_MARKET_DEALS = [
     {"Source": "Carwow", "Description": "VW ID.7 Match Pro S Plus 86kWh (434mi) — exact 36mo/20k/1+35 (£295 fee)",
      "Monthly £": 599.37, "Upfront £": 295.0, "Miles/yr": 20_000,
      "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": 982.0},
+    # --- Fast variants: 0-60 under 4.5s only (swept 11 Jun 2026) ----------
+    # User asked for sub-4.5s Model 3 / Seal options. Qualifying 2026-lineup
+    # cars (0-60 verified per variant on Parkers): M3 Premium LR AWD 4.2s
+    # (group 40), M3 Performance 2.9s (group 48), Seal Excellence AWD 390kW
+    # 3.8s 0-62 (group 48). The RWD/Design cars do NOT qualify (4.9-5.7s).
+    # Ins £/yr are group-implied estimates; Tesla/BYD real quotes often run
+    # higher (repair-cost loadings). Not modelled: M3 Performance tyre habit
+    # at 20k mi/yr (~£900-1,000/yr, vs the i4-calibrated maintenance add-on).
+    # The used 2021 LR AWD is ONE unit (LB71 UJV, 35,699 mi, pre-facelift,
+    # road tax + breakdown incl.); its excess rate is unpublished.
+    {"Source": "Nationwide VC", "Description": "USED 2021 Tesla Model 3 LR AWD, 36k mi (360mi, 4.2s) — exact 36mo/20k/1+35 (£357 fee, 1 unit)",
+     "Monthly £": 285.45, "Upfront £": 357.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": 1_327.0},
+    {"Source": "LeaseLoco", "Description": "BYD Seal Excellence AWD 390kW (323mi, 3.8s) — exact 36mo/20k/1+35 (£0 fee, in stock)",
+     "Monthly £": 522.30, "Upfront £": 0.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": 1_327.0},
+    {"Source": "Nationwide VC", "Description": "BYD Seal Excellence AWD 390kW pre-reg (323mi, 3.8s) — exact 36mo/20k/1+35 (£357 fee, 21.6p excess)",
+     "Monthly £": 521.87, "Upfront £": 357.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 21.6, "Ins £/yr": 1_327.0},
+    {"Source": "LeaseLoco", "Description": "Tesla Model 3 Premium LR AWD 85kWh (444mi, 4.2s) — exact 36mo/20k/1+35 (£0 fee)",
+     "Monthly £": 809.65, "Upfront £": 0.0, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 10.0, "Ins £/yr": 1_016.0},
+    {"Source": "FVL", "Description": "Tesla Model 3 Performance 85kWh (354mi, 2.9s) — exact 36mo/20k/1+35 (£350 fee)",
+     "Monthly £": 1131.82, "Upfront £": 349.99, "Miles/yr": 20_000,
+     "Term (mo)": 36, "Excess p/mi": 15.84, "Ins £/yr": 1_327.0},
 ]
 
 
