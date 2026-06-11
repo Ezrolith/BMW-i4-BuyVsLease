@@ -38,6 +38,12 @@ from models import (
     suggest_exit_pct,
     total_cost,
 )
+from leaseloco import (
+    fetch_range_quotes,
+    nearest_allowed_mileage,
+    quotes_to_deal_rows,
+    resolve_range_id,
+)
 
 st.set_page_config(page_title="BMW i4 — Buy vs Lease", layout="wide",
                    initial_sidebar_state="expanded")
@@ -324,8 +330,11 @@ if _pending is not None:
     if md is not None:
         st.session_state["market_deals"] = md
         # Remount the data editor with a fresh key so stale widget-state edits
-        # don't overlay the loaded rows (editor state can't be written directly).
+        # don't overlay the loaded rows (editor state can't be written directly),
+        # and drop the rendered snapshot — folding pre-load rows into a
+        # post-load fetch would resurrect them.
         st.session_state["market_deals_nonce"] += 1
+        st.session_state.pop("market_rendered", None)
     for k, v in _pending.items():
         if k in EXPORT_KEYS:
             st.session_state[k] = v
@@ -805,8 +814,71 @@ market_includes_eved = mc3.checkbox(
          "or on you on top of each deal (unticked). Mirror your own-lease "
          "'Includes eVED?' setting to keep the comparison symmetric")
 
-# Base rows come from session state (seed, or a loaded scenario). An empty list
-# still needs the column headers, else the editor renders with no columns.
+@st.cache_data(ttl=24 * 3600, show_spinner=False)
+def _ll_range_id(slug: str) -> int:
+    return resolve_range_id(slug)
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _ll_quotes(range_id: int, term: int, mileage: int, initial: int) -> list[dict]:
+    return fetch_range_quotes(range_id, term, mileage, initial)
+
+
+with st.expander("🔄 Fetch live LeaseLoco quotes (API)"):
+    st.caption(
+        "Pulls exact personal quotes **at your terms** straight from LeaseLoco's "
+        "pricing API (its prices are ex-VAT — corrected ×1.2 here), adds a "
+        "**notional insurance** estimate scaled off your own premium by each "
+        "car's 0-62 time, and drops the rows into the table below so they rank "
+        "as all-in effective £/mo like everything else. Estimates, not quotes — "
+        "verify before signing."
+    )
+    ll_c1, ll_c2 = st.columns([3, 1])
+    ll_slug = ll_c1.text_input(
+        "LeaseLoco model page or make/model slug", value="tesla/model-3",
+        key="ll_slug",
+        help="e.g. tesla/model-3 · byd/seal · bmw/i4 — or paste the full "
+             "leaseloco.com model page URL")
+    # Snap to the API's accepted values, keeping term aligned with the hold so
+    # the term-mismatch warning stays quiet for live rows.
+    _ll_term = min((24, 36, 48), key=lambda t: abs(t - purchase.hold_years * 12))
+    _ll_miles = nearest_allowed_mileage(int(purchase.annual_miles))
+    if ll_c2.button(f"Fetch at {_ll_term}mo/{_ll_miles // 1000}k",
+                    use_container_width=True):
+        try:
+            with st.spinner("Quoting LeaseLoco…"):
+                results = _ll_quotes(_ll_range_id(ll_slug), _ll_term, _ll_miles, 1)
+            new_rows = quotes_to_deal_rows(
+                results, baseline_insurance=running.insurance_annual,
+                fetched_on=date.today().strftime("%d %b"))
+            if not new_rows:
+                st.warning(f"No personal quotes at {_ll_term} mo / {_ll_miles:,} "
+                           "mi / 1-month initial for that model.")
+            else:
+                # Changing the editor's input data remounts it whatever the key
+                # (Streamlit hashes the data into the element id), which would
+                # silently discard widget-state edits. So: fold the table AS
+                # THE USER SEES IT (last run's rendered snapshot — base rows +
+                # their edits/additions/deletions) into the base first, append
+                # the genuinely new quotes, and remount explicitly.
+                base = (st.session_state.get("market_rendered")
+                        or st.session_state["market_deals"])
+                existing = {(r.get("Description"), r.get("Monthly £"))
+                            for r in base}
+                fresh = [r for r in new_rows
+                         if (r["Description"], r["Monthly £"]) not in existing]
+                st.session_state["market_deals"] = list(base) + fresh
+                st.session_state["market_deals_nonce"] += 1
+                dupes = len(new_rows) - len(fresh)
+                msg = (f"Added {len(fresh)} live quote(s)"
+                       + (f" ({dupes} already in the table)." if dupes else "."))
+                (st.success if fresh else st.info)(msg)
+        except Exception as e:
+            st.error(f"LeaseLoco fetch failed: {e}")
+
+# Base rows come from session state (seed, a loaded scenario, or live-fetched
+# LeaseLoco quotes). An empty list still needs the column headers, else the
+# editor renders with no columns.
 _deal_rows = st.session_state["market_deals"]
 deals_df = st.data_editor(
     pd.DataFrame(_deal_rows) if _deal_rows else pd.DataFrame(SEED_MARKET_DEALS).iloc[0:0],
@@ -881,8 +953,11 @@ def _coerce_deal_rows(rows: list[dict]) -> list[dict]:
 
 
 # JSON-safe snapshot of the table as edited (base rows + widget-state edits).
-# The Save/load section exports this, so a deal set round-trips with the scenario.
+# The Save/load section exports this, so a deal set round-trips with the
+# scenario — and the live-fetch handler folds it into the base on the next run
+# so a remount can't lose the user's edits.
 market_records = jsonable_records(deals_df.to_dict("records"))
+st.session_state["market_rendered"] = market_records
 
 market_results = []
 for row in market_records:

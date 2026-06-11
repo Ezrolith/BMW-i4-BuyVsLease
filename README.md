@@ -64,9 +64,13 @@ with the URLs used to anchor each default. Key choices:
   Anything here is unit-testable in isolation.
 - `app.py` — Streamlit UI. Builds pydantic objects from `st.session_state`, hands them to
   `models.py`, renders the result.
-- `tests/test_models.py` — pytest suite (52 tests). Covers each cost component, the ECS
-  window, partial-year pro-rating, market-deal normalisation (term-aware amortisation,
-  eVED flag, component identities), JSON-safe record coercion, and 3 end-to-end scenarios.
+- `leaseloco.py` — live LeaseLoco pricing-API client (range-id resolution, quote fetch,
+  row mapping with the ex-VAT ×1.2 correction, notional-insurance heuristic). Pure
+  functions with injectable fetchers; no Streamlit imports.
+- `tests/` — pytest suite (66 tests across `test_models.py` + `test_leaseloco.py`).
+  Covers each cost component, the ECS window, partial-year pro-rating, market-deal
+  normalisation (term-aware amortisation, eVED flag, component identities), JSON-safe
+  record coercion, the live-quote mapping/VAT/dedupe behaviour, and 3 end-to-end scenarios.
 
 ## Market lease deals — the EV field (LeaseLoco / Carwow / brokers)
 
@@ -77,7 +81,13 @@ VW ID.7, each with WLTP range in the label and a per-row insurance estimate from
 group — each normalised to an all-in **effective £/mo**
 so deals are apples-to-apples with the buy-out and your own lease: upfront amortised over
 the hold, excess mileage charged at your annual usage, insurance + maintenance added on
-top (PCH deals don't bundle them). Seed rows are **exact quotes (10 Jun 2026)** at the
+top (PCH deals don't bundle them).
+
+**Live quotes:** the section's "Fetch live LeaseLoco quotes" expander pulls exact personal
+prices for any model straight from LeaseLoco's pricing API at your term/mileage (their API
+quotes ex-VAT — corrected ×1.2, a verified gotcha), attaches a notional insurance estimate
+scaled off your own premium by each car's 0-62 time, and merges the rows into the table —
+preserving any edits you've made. Estimates, not quotes; deals churn daily. Seed rows are **exact quotes (10 Jun 2026)** at the
 target config — 36 months / 20k miles/yr / 1-month initial — captured from each site's
 own pricing API or server-rendered listings, not "from" headlines. Upfront cells hold
 one-off fees only (a 1+35 profile adds no extra months; an N-months-initial quote is

@@ -5,6 +5,52 @@ Rolling notes to pick up work between sessions. Newest entry first.
 
 ---
 
+## Session — 2026-06-11 (live API): in-app LeaseLoco quoting + review fixes
+
+### What was asked
+Peter: review the program against the "filtered deal hunt" use-case and upgrade it to
+"API into LeaseLoco, add a notional insurance cost, come up with an effective price for
+comparison" — i.e. live quotes in-app.
+
+### What was built
+- **`leaseloco.py`** (pure module, injectable fetchers, no Streamlit): `resolve_range_id`
+  (model page → range id via `__NEXT_DATA__`, e.g. tesla/model-3 → 339), `fetch_range_quotes`
+  (api.leaseloco.com/search/v2 at term/mileage/1-month initial, browser-ish headers),
+  `quotes_to_deal_rows` (×1.2 ex-VAT correction baked in, upfront = fee + (N−1)×monthly,
+  per-item error isolation), `notional_insurance` (0-62-time tiers calibrated to the
+  Parkers groups verified this week: <3.5s ×1.40, <4.5 ×1.10, <5.5 ×1.0, else ×0.85 of
+  the user's own premium — estimates, clearly labelled).
+- **App**: "🔄 Fetch live LeaseLoco quotes (API)" expander above the deals editor — slug or
+  URL in, term/mileage snapped to API-accepted values nearest the user's hold/usage,
+  cached (`st.cache_data`, 15 min quotes / 24 h range-ids), rows merged into the table and
+  ranked all-in like everything else. Live-verified: tesla/model-3 → 7 exact quotes.
+- Suite 53 → **66 tests** (mapping/VAT/dedupe/edge cases), AppTest button-click E2E passes.
+
+### Adversarial review (all confirmed by repro, all fixed + regression-tested)
+1. **MAJOR — "append-only avoids a remount" was false.** Streamlit 1.41.1 hashes the
+   data_editor's input into its element id, so ANY base-data change remounts it and wipes
+   widget-state edits silently. Fix: each run snapshots the rendered table
+   (`market_rendered`); the fetch folds that snapshot (= what the user sees, edits and
+   all) into the base before appending, then remounts explicitly via the nonce. Scenario
+   load clears the snapshot so pre-load rows can't resurrect.
+2. Dedupe now keys off the rendered table (was: invisible base rows) — deleted rows can
+   be re-fetched, hand-pasted quotes dedupe; "Added 0" shows as st.info.
+3. Fetch date moved Description → Source: it was inside the dedupe key, so every
+   later-day refetch would have duplicated all unchanged quotes.
+4. Missing API mileage → None (user's own miles), not 0 (phantom £167/mo excess).
+5. `"results": null` → `[]` (None would be cached as success for the 15-min TTL).
+6. One malformed vehicle item is skipped, not allowed to abort the whole fetch.
+(One finding rejected by the verifier: the range-id most-common heuristic is sound.)
+
+### Validation verdict for Peter's use-case
+The program now does the full loop he described: pick a model → live exact quotes at his
+terms → notional insurance per car → all-in effective £/mo ranked against buy-out, his
+lease, and today. Criteria filters (0-60, range) live in the row labels; the maths
+(min(term,hold) amortisation, excess at his mileage, per-row insurance) was already
+review-hardened earlier this week.
+
+---
+
 ## Session — 2026-06-11 (fast variants): sub-4.5s Model 3 / Seal hunt
 
 ### What was asked
